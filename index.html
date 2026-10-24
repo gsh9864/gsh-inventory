@@ -1,0 +1,823 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<base target="_top">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>好肌府 · 庫存效期系統</title>
+<style>
+  :root{
+    --bg:#f6f3ef; --card:#ffffff; --ink:#2f2a26; --muted:#8a8079; --line:#e7e0d8;
+    --brand:#8c6f5a; --brand-ink:#ffffff; --brand-soft:#efe6de;
+    --ok:#4f7a5a; --ok-soft:#e5efe6; --warn:#b07a1f; --warn-soft:#f7ecd6;
+    --bad:#b0463c; --bad-soft:#f6e1de; --info:#4e6a86; --info-soft:#e2e9f1;
+    --radius:14px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 -apple-system,BlinkMacSystemFont,"PingFang TC","Noto Sans TC","Microsoft JhengHei",sans-serif}
+  button,input,select,textarea{font:inherit;color:inherit}
+  .hidden{display:none!important}
+  .wrap{max-width:860px;margin:0 auto;padding:0 16px 96px}
+  header.top{position:sticky;top:0;z-index:20;background:var(--bg);border-bottom:1px solid var(--line)}
+  .topbar{max-width:860px;margin:0 auto;padding:10px 16px 0;display:flex;align-items:center;gap:8px}
+  .topbar h1{font-size:17px;margin:0;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .who{font-size:13px;color:var(--muted);white-space:nowrap}
+  .who b{color:var(--ink)}
+  .tabs{max-width:860px;margin:0 auto;display:flex;gap:0;overflow-x:auto;padding:6px 8px 0;scrollbar-width:none}
+  .tabs::-webkit-scrollbar{display:none}
+  .tab{flex:1 0 auto;border:0;background:none;padding:8px 9px 10px;border-bottom:3px solid transparent;white-space:nowrap;color:var(--muted);cursor:pointer;font-weight:600}
+  .tab.on{color:var(--brand);border-bottom-color:var(--brand)}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:14px;margin:12px 0}
+  .card h2{font-size:16px;margin:0 0 10px}
+  .card h3{font-size:14px;margin:14px 0 6px;color:var(--muted)}
+  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .grow{flex:1;min-width:0}
+  label.f{display:block;font-size:13px;color:var(--muted);margin:10px 0 4px}
+  input[type=text],input[type=password],input[type=number],input[type=date],select,textarea{
+    width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:#fff;min-height:44px}
+  textarea{min-height:64px}
+  .btn{border:1px solid var(--line);background:#fff;padding:9px 14px;border-radius:10px;cursor:pointer;min-height:42px;font-weight:600}
+  .btn.primary{background:var(--brand);border-color:var(--brand);color:var(--brand-ink)}
+  .btn.danger{background:var(--bad);border-color:var(--bad);color:#fff}
+  .btn.ghost{background:transparent}
+  .btn.sm{padding:5px 10px;min-height:32px;font-size:13px}
+  .btn.block{width:100%}
+  .btn:disabled{opacity:.5;cursor:default}
+  .chips{display:flex;gap:6px;flex-wrap:wrap}
+  .chip{border:1px solid var(--line);background:#fff;border-radius:999px;padding:6px 12px;cursor:pointer;font-size:14px}
+  .chip.on{background:var(--brand);border-color:var(--brand);color:#fff}
+  .tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:12px 0}
+  .tile{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px;text-align:center;cursor:pointer}
+  .tile .n{font-size:24px;font-weight:700}
+  .tile .l{font-size:12px;color:var(--muted)}
+  .tile.bad .n{color:var(--bad)} .tile.warn .n{color:var(--warn)}
+  .plist{display:flex;flex-direction:column;gap:8px}
+  .pitem{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 12px;display:flex;gap:10px;align-items:center;cursor:pointer}
+  .pitem .nm{font-weight:600}
+  .pitem .sub{font-size:12px;color:var(--muted)}
+  .pitem .qty{font-size:22px;font-weight:700;text-align:right;min-width:56px}
+  .pitem .qty small{display:block;font-size:11px;color:var(--muted);font-weight:400}
+  .pitem.off{opacity:.55}
+  .badge{display:inline-block;font-size:12px;padding:1px 8px;border-radius:999px;margin:2px 4px 0 0;white-space:nowrap}
+  .b-ok{background:var(--ok-soft);color:var(--ok)} .b-warn{background:var(--warn-soft);color:var(--warn)}
+  .b-bad{background:var(--bad-soft);color:var(--bad)} .b-info{background:var(--info-soft);color:var(--info)}
+  .b-mute{background:#eee;color:#777}
+  .groupttl{font-size:13px;color:var(--muted);margin:14px 2px 4px;font-weight:600}
+  table.t{width:100%;border-collapse:collapse;font-size:14px}
+  table.t th,table.t td{padding:8px 6px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+  table.t th{font-size:12px;color:var(--muted);font-weight:600}
+  .num{text-align:right!important;white-space:nowrap}
+  .scroll-x{overflow-x:auto}
+  .muted{color:var(--muted)} .small{font-size:12px}
+  .err{color:var(--bad);font-size:14px;margin-top:8px;min-height:1em}
+  .note{background:var(--info-soft);color:var(--info);padding:10px 12px;border-radius:10px;font-size:14px}
+  .warnbox{background:var(--warn-soft);color:var(--warn);padding:10px 12px;border-radius:10px;font-size:14px}
+  /* picker */
+  .picker{position:relative}
+  .picker .list{position:absolute;left:0;right:0;top:100%;z-index:30;background:#fff;border:1px solid var(--line);border-radius:10px;max-height:300px;overflow:auto;box-shadow:0 8px 24px rgba(0,0,0,.08)}
+  .picker .opt{padding:10px 12px;cursor:pointer;border-bottom:1px solid #f2ede8;display:flex;justify-content:space-between;gap:8px}
+  .picker .opt:hover,.picker .opt.hl{background:var(--brand-soft)}
+  .picked{margin-top:8px;padding:10px 12px;border-radius:10px;background:var(--brand-soft);font-size:14px}
+  /* count */
+  .crow{display:grid;grid-template-columns:1fr 64px 88px;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)}
+  .crow .book{text-align:right;color:var(--muted);font-size:13px}
+  .crow input{min-height:40px;padding:6px 8px;text-align:right}
+  .crow .rsn{grid-column:1/-1}
+  .crow.diff{background:var(--warn-soft);margin:0 -14px;padding:8px 14px}
+  /* modal */
+  .mask{position:fixed;inset:0;background:rgba(40,30,20,.45);z-index:50;display:flex;align-items:flex-end;justify-content:center}
+  .modal{background:#fff;width:100%;max-width:560px;max-height:90vh;overflow:auto;border-radius:18px 18px 0 0;padding:16px}
+  @media(min-width:640px){.mask{align-items:center}.modal{border-radius:18px}}
+  .modal h2{margin:0 0 8px;font-size:17px}
+  .modal .acts{display:flex;gap:8px;justify-content:flex-end;margin-top:14px;flex-wrap:wrap}
+  .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#2f2a26;color:#fff;padding:10px 16px;border-radius:999px;z-index:60;font-size:14px;max-width:90vw}
+  .loading{position:fixed;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,transparent,var(--brand),transparent);background-size:200% 100%;animation:ld 1s linear infinite;z-index:70}
+  @keyframes ld{from{background-position:200% 0}to{background-position:-200% 0}}
+  /* login */
+  .login{max-width:380px;margin:8vh auto;padding:0 16px}
+  .login .logo{text-align:center;font-size:22px;font-weight:700;margin-bottom:4px}
+  .login .sub{text-align:center;color:var(--muted);margin-bottom:16px}
+  .namegrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+  .namegrid .chip{text-align:center;padding:10px 4px}
+</style>
+</head>
+<body>
+<div id="loading" class="loading hidden"></div>
+
+<!-- ============ 登入 ============ -->
+<div id="loginView" class="login hidden">
+  <div class="logo">好肌府 · 庫存效期</div>
+  <div class="sub" id="loginSub">請選擇你的名字並輸入密碼</div>
+
+  <div id="setupBox" class="card hidden">
+    <h2>第一次使用：設定密碼</h2>
+    <div class="note">請設定兩組密碼。<b>員工密碼</b>給大家共用，<b>老闆密碼</b>只有你知道（可以管理商品、處理過期品、看系統設定）。</div>
+    <label class="f">老闆密碼（至少 4 個字）</label>
+    <input type="password" id="setupBoss" autocomplete="new-password">
+    <label class="f">員工共用密碼（至少 4 個字）</label>
+    <input type="password" id="setupStaff" autocomplete="new-password">
+    <div class="err" id="setupErr"></div>
+    <button class="btn primary block" id="setupBtn">完成設定</button>
+  </div>
+
+  <div id="loginBox" class="card hidden">
+    <label class="f">我是</label>
+    <div class="namegrid" id="nameGrid"></div>
+    <label class="f">密碼</label>
+    <input type="password" id="loginPw" autocomplete="current-password">
+    <div class="err" id="loginErr"></div>
+    <button class="btn primary block" id="loginBtn">登入</button>
+  </div>
+</div>
+
+<!-- ============ 主畫面 ============ -->
+<div id="appView" class="hidden">
+  <header class="top">
+    <div class="topbar">
+      <h1>好肌府 · 庫存效期</h1>
+      <span class="who" id="whoami"></span>
+      <button class="btn sm ghost" id="logoutBtn">登出</button>
+    </div>
+    <nav class="tabs" id="tabs"></nav>
+  </header>
+  <main class="wrap" id="main"></main>
+</div>
+
+<div id="modalRoot"></div>
+
+<script>
+/* =========================================================
+ *  與後端溝通
+ * ========================================================= */
+var S = { token: null, me: null, data: null, tab: 'stock', filter: { q: '', group: '', status: '' }, picks: {} };
+
+function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+function lsSet(k, v) { try { if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) {} }
+
+var pending = 0;
+function busy(d) { pending += d; document.getElementById('loading').classList.toggle('hidden', pending <= 0); }
+
+// 在 Google Apps Script 裡打開時用 google.script.run；放在其他網址（GitHub Pages）時改用 fetch 打這個 API。
+var API_URL = 'https://script.google.com/macros/s/AKfycbzCxuQYDlEVrkq9wdZ2KdPMKnvPjvQBSIojsZ7m1Iqr1mThFPh1-bQDKuDVrxhq0wcv/exec';
+
+function rawCall(req) {
+  if (window.google && google.script && google.script.run) {
+    return new Promise(function (resolve, reject) {
+      google.script.run.withSuccessHandler(resolve)
+        .withFailureHandler(function (e) { reject(new Error((e && e.message) || '連線失敗，請再試一次')); })
+        .api(req);
+    });
+  }
+  // 不帶 Content-Type（純文字），瀏覽器不會先發 CORS 預檢；也不帶 Google cookie，所以不受多帳號影響
+  return fetch(API_URL, { method: 'POST', body: JSON.stringify(req), redirect: 'follow', credentials: 'omit' })
+    .then(function (res) { return res.text(); })
+    .then(function (txt) {
+      try { return JSON.parse(txt); } catch (e) { throw new Error('伺服器回應異常，請稍後再試'); }
+    }, function () { throw new Error('連線失敗，請檢查網路後再試一次'); });
+}
+
+function call(action, payload) {
+  busy(1);
+  return rawCall({ action: action, token: S.token, payload: payload || {} }).then(function (r) {
+    busy(-1);
+    if (r && r.ok) return r.data;
+    if (r && r.relogin) { doLogout(true); }
+    throw new Error(r && r.error ? r.error : '發生錯誤');
+  }, function (e) { busy(-1); throw e; });
+}
+
+/* =========================================================
+ *  小工具
+ * ========================================================= */
+function $(id) { return document.getElementById(id); }
+function esc(s) { return String(s === null || s === undefined ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+function fmtQ(n) { if (n === null || n === undefined || n === '') return '—'; var x = Math.round(Number(n) * 100) / 100; return String(x); }
+function toast(msg) {
+  Array.prototype.forEach.call(document.querySelectorAll('.toast'), function (x) { x.remove(); });
+  var t = document.createElement('div'); t.className = 'toast'; t.textContent = msg; document.body.appendChild(t);
+  setTimeout(function () { t.remove(); }, 2600);
+}
+function isBoss() { return S.me && S.me.role === 'boss'; }
+function prodById(id) { var ps = S.data ? S.data.products : []; for (var i = 0; i < ps.length; i++) if (ps[i].id === id) return ps[i]; return null; }
+function stockBadge(p) {
+  if (p.stockStatus === '缺貨') return '<span class="badge b-bad">缺貨</span>';
+  if (p.stockStatus === '庫存不足') return '<span class="badge b-warn">庫存不足</span>';
+  return '';
+}
+function expBadge(status, date, days) {
+  if (!status) return '';
+  var cls = status === '已過期' ? 'b-bad' : status === '即期' ? 'b-warn' : 'b-ok';
+  var txt = status === '已過期' ? '已過期 ' + date : status === '即期' ? date + '（剩 ' + days + ' 天）' : '效期 ' + date;
+  return '<span class="badge ' + cls + '">' + esc(txt) + '</span>';
+}
+function groups() {
+  var seen = {}, out = [];
+  (S.data ? S.data.products : []).forEach(function (p) { if (p.group && !seen[p.group]) { seen[p.group] = 1; out.push(p.group); } });
+  return out;
+}
+
+/* =========================================================
+ *  Modal（不用瀏覽器原生 confirm/prompt）
+ * ========================================================= */
+function openModal(html, onMount) {
+  var root = $('modalRoot');
+  root.innerHTML = '<div class="mask" id="mask"><div class="modal" role="dialog">' + html + '</div></div>';
+  $('mask').addEventListener('click', function (e) { if (e.target.id === 'mask') closeModal(); });
+  if (onMount) onMount(root.querySelector('.modal'));
+}
+function closeModal() { $('modalRoot').innerHTML = ''; }
+function confirmBox(title, msg, okText, danger) {
+  return new Promise(function (resolve) {
+    openModal('<h2>' + esc(title) + '</h2><div>' + msg + '</div><div class="acts">' +
+      '<button class="btn" id="cfNo">取消</button><button class="btn ' + (danger ? 'danger' : 'primary') + '" id="cfYes">' + esc(okText || '確定') + '</button></div>',
+      function () {
+        $('cfNo').onclick = function () { closeModal(); resolve(false); };
+        $('cfYes').onclick = function () { closeModal(); resolve(true); };
+      });
+  });
+}
+
+/* =========================================================
+ *  商品挑選器
+ * ========================================================= */
+function pickerHtml(key, placeholder) {
+  var p = S.picks[key] ? prodById(S.picks[key]) : null;
+  return '<div class="picker" data-key="' + key + '">' +
+    '<input type="text" class="pk-in" placeholder="' + esc(placeholder || '搜尋商品名稱…') + '" autocomplete="off">' +
+    '<div class="list hidden"></div></div>' +
+    '<div class="picked ' + (p ? '' : 'hidden') + '" id="picked_' + key + '">' + (p ? pickedInfo(p) : '') + '</div>';
+}
+function pickedInfo(p) {
+  return '<b>' + esc(p.name) + '</b>' + (p.spec ? ' <span class="muted">' + esc(p.spec) + '</span>' : '') +
+    '<br>目前庫存 <b>' + fmtQ(p.qty) + '</b>' + (p.unit ? ' ' + esc(p.unit) : '') +
+    (p.earliest ? '　最快到期 ' + esc(p.earliest) : '') + ' ' + stockBadge(p);
+}
+function bindPicker(key, onPick) {
+  var box = document.querySelector('.picker[data-key="' + key + '"]');
+  if (!box) return;
+  var inp = box.querySelector('.pk-in'), list = box.querySelector('.list');
+  function render() {
+    var q = inp.value.trim().toLowerCase();
+    var items = S.data.products.filter(function (p) { return p.active && (!q || p.name.toLowerCase().indexOf(q) >= 0 || p.group.toLowerCase().indexOf(q) >= 0); });
+    list.innerHTML = items.slice(0, 60).map(function (p) {
+      return '<div class="opt" data-id="' + p.id + '"><span>' + esc(p.name) + (p.spec ? ' <span class="muted small">' + esc(p.spec) + '</span>' : '') +
+        '</span><span class="muted small">庫存 ' + fmtQ(p.qty) + '</span></div>';
+    }).join('') || '<div class="opt muted">找不到商品</div>';
+    list.classList.remove('hidden');
+  }
+  inp.addEventListener('focus', render);
+  inp.addEventListener('input', render);
+  list.addEventListener('mousedown', function (e) {
+    var o = e.target.closest('.opt'); if (!o || !o.dataset.id) return;
+    e.preventDefault();
+    S.picks[key] = o.dataset.id; inp.value = ''; list.classList.add('hidden'); inp.blur();
+    var p = prodById(o.dataset.id);
+    var pk = $('picked_' + key); pk.innerHTML = pickedInfo(p); pk.classList.remove('hidden');
+    if (onPick) onPick(p);
+  });
+  inp.addEventListener('blur', function () { setTimeout(function () { list.classList.add('hidden'); }, 150); });
+}
+
+/* =========================================================
+ *  登入流程
+ * ========================================================= */
+var chosenName = '';
+function showLogin() {
+  $('appView').classList.add('hidden');
+  $('loginView').classList.remove('hidden');
+  call('loginInfo').then(function (info) {
+    if (info.needsSetup) {
+      $('setupBox').classList.remove('hidden'); $('loginBox').classList.add('hidden');
+      $('loginSub').textContent = '歡迎！先完成第一次設定';
+      return;
+    }
+    $('setupBox').classList.add('hidden'); $('loginBox').classList.remove('hidden');
+    $('loginSub').textContent = '請選擇你的名字並輸入密碼';
+    var last = lsGet('hjf_last_name');
+    chosenName = info.staff.indexOf(last) >= 0 ? last : '';
+    $('nameGrid').innerHTML = info.staff.map(function (n) {
+      return '<button class="chip' + (n === chosenName ? ' on' : '') + '" data-n="' + esc(n) + '">' + esc(n) + '</button>';
+    }).join('');
+  }).catch(function (e) { $('loginErr').textContent = e.message; $('loginBox').classList.remove('hidden'); });
+}
+$('nameGrid').addEventListener('click', function (e) {
+  var b = e.target.closest('.chip'); if (!b) return;
+  chosenName = b.dataset.n;
+  Array.prototype.forEach.call($('nameGrid').children, function (c) { c.classList.toggle('on', c === b); });
+  $('loginPw').focus();
+});
+$('loginBtn').onclick = doLogin;
+$('loginPw').addEventListener('keydown', function (e) { if (e.key === 'Enter') doLogin(); });
+function doLogin() {
+  $('loginErr').textContent = '';
+  if (!chosenName) { $('loginErr').textContent = '請先點選你的名字'; return; }
+  $('loginBtn').disabled = true;
+  call('login', { name: chosenName, pw: $('loginPw').value }).then(function (r) {
+    S.token = r.token; S.me = { name: r.name, role: r.role };
+    lsSet('hjf_token', r.token); lsSet('hjf_last_name', r.name);
+    $('loginPw').value = '';
+    enterApp();
+  }).catch(function (e) { $('loginErr').textContent = e.message; })
+    .then(function () { $('loginBtn').disabled = false; });
+}
+$('setupBtn').onclick = function () {
+  $('setupErr').textContent = '';
+  call('setup', { bossPw: $('setupBoss').value, staffPw: $('setupStaff').value }).then(function () {
+    toast('密碼設定完成，請登入'); showLogin();
+  }).catch(function (e) { $('setupErr').textContent = e.message; });
+};
+$('logoutBtn').onclick = function () { doLogout(false); };
+function doLogout(expired) {
+  S.token = null; S.me = null; S.data = null; lsSet('hjf_token', null);
+  closeModal();
+  if (expired) toast('登入已過期，請重新登入');
+  showLogin();
+}
+
+function enterApp() {
+  call('state').then(function (st) {
+    S.data = st; S.me = st.me;
+    $('loginView').classList.add('hidden'); $('appView').classList.remove('hidden');
+    $('whoami').innerHTML = '<b>' + esc(S.me.name) + '</b>' + (isBoss() ? '（老闆）' : '');
+    if (isBoss() && !st.imported && !st.products.length) S.tab = 'admin';
+    render();
+  }).catch(function (e) { toast(e.message); showLogin(); });
+}
+
+/* =========================================================
+ *  分頁
+ * ========================================================= */
+var TABS = [
+  ['stock', '庫存'], ['ship', '出貨'], ['receive', '進貨'], ['count', '盤點'], ['expiry', '效期'], ['log', '紀錄'], ['admin', '管理']
+];
+function render() {
+  var tabs = TABS.filter(function (t) { return t[0] !== 'admin' || isBoss(); });
+  $('tabs').innerHTML = tabs.map(function (t) {
+    return '<button class="tab' + (S.tab === t[0] ? ' on' : '') + '" data-t="' + t[0] + '">' + t[1] + '</button>';
+  }).join('');
+  var fn = VIEWS[S.tab] || VIEWS.stock;
+  fn();
+}
+$('tabs').addEventListener('click', function (e) {
+  var b = e.target.closest('.tab'); if (!b) return;
+  S.tab = b.dataset.t; render(); window.scrollTo(0, 0);
+});
+function applyState(st) { S.data = st; S.me = st.me; render(); }
+
+var VIEWS = {};
+
+/* ---------- 庫存 ---------- */
+VIEWS.stock = function () {
+  var ps = S.data.products.filter(function (p) { return p.active; });
+  var low = ps.filter(function (p) { return p.stockStatus !== '正常'; }).length;
+  var exp = ps.filter(function (p) { return p.expStatus === '已過期' || p.expStatus === '即期'; }).length;
+  var f = S.filter;
+  var html = '';
+  if (!ps.length) {
+    html += '<div class="card"><div class="warnbox">目前還沒有商品資料。' + (isBoss() ? '請到「管理」分頁按「從舊表匯入」。' : '請老闆先到「管理」匯入舊表資料。') + '</div></div>';
+  }
+  html += '<div class="tiles">' +
+    '<div class="tile" data-st=""><div class="n">' + ps.length + '</div><div class="l">商品數</div></div>' +
+    '<div class="tile ' + (low ? 'bad' : '') + '" data-st="low"><div class="n">' + low + '</div><div class="l">缺貨／不足</div></div>' +
+    '<div class="tile ' + (exp ? 'warn' : '') + '" data-st="exp"><div class="n">' + exp + '</div><div class="l">即期／過期</div></div></div>';
+  html += '<input type="text" id="q" placeholder="搜尋商品…" value="' + esc(f.q) + '">';
+  html += '<div class="chips" style="margin:8px 0" id="gchips"><button class="chip' + (!f.group ? ' on' : '') + '" data-g="">全部</button>' +
+    groups().map(function (g) { return '<button class="chip' + (f.group === g ? ' on' : '') + '" data-g="' + esc(g) + '">' + esc(g) + '</button>'; }).join('') + '</div>';
+  if (f.status) html += '<div class="note" style="margin:8px 0">只顯示：' + (f.status === 'low' ? '缺貨／庫存不足' : '即期／已過期') + '　<a href="#" id="clrSt">顯示全部</a></div>';
+  html += '<div id="plist"></div>';
+  $('main').innerHTML = html;
+
+  function draw() {
+    var q = f.q.trim().toLowerCase();
+    var list = ps.filter(function (p) {
+      if (f.group && p.group !== f.group) return false;
+      if (q && p.name.toLowerCase().indexOf(q) < 0) return false;
+      if (f.status === 'low' && p.stockStatus === '正常') return false;
+      if (f.status === 'exp' && !(p.expStatus === '已過期' || p.expStatus === '即期')) return false;
+      return true;
+    });
+    var out = '', lastG = null;
+    list.forEach(function (p) {
+      if (p.group !== lastG && !f.group) { out += '<div class="groupttl">' + esc(p.group || '未分組') + '</div>'; lastG = p.group; }
+      out += '<div class="pitem" data-id="' + p.id + '"><div class="grow"><div class="nm">' + esc(p.name) + '</div>' +
+        '<div class="sub">' + esc([p.spec, p.category].filter(Boolean).join('・')) + (p.safety !== null ? '　安全庫存 ' + fmtQ(p.safety) : '') + '</div>' +
+        '<div>' + stockBadge(p) + expBadge(p.expStatus === '正常' ? '' : p.expStatus, p.earliest, p.daysLeft) + '</div></div>' +
+        '<div class="qty">' + fmtQ(p.qty) + '<small>' + esc(p.unit || '庫存') + '</small></div></div>';
+    });
+    $('plist').innerHTML = out || '<div class="muted" style="padding:20px;text-align:center">沒有符合的商品</div>';
+  }
+  draw();
+  $('q').oninput = function () { f.q = this.value; draw(); };
+  $('gchips').onclick = function (e) { var b = e.target.closest('.chip'); if (!b) return; f.group = b.dataset.g; VIEWS.stock(); };
+  Array.prototype.forEach.call(document.querySelectorAll('.tile'), function (t) { t.onclick = function () { f.status = t.dataset.st; VIEWS.stock(); }; });
+  if ($('clrSt')) $('clrSt').onclick = function (e) { e.preventDefault(); f.status = ''; VIEWS.stock(); };
+  $('plist').onclick = function (e) { var it = e.target.closest('.pitem'); if (it) showProduct(it.dataset.id); };
+};
+
+function showProduct(id) {
+  var p = prodById(id);
+  var lots = p.lots.map(function (l) {
+    return '<tr><td>' + (l.expiry ? esc(l.expiry) : '<span class="muted">效期未登記</span>') + ' ' + (l.status === '已過期' ? '<span class="badge b-bad">已過期</span>' : l.status === '即期' ? '<span class="badge b-warn">剩 ' + l.daysLeft + ' 天</span>' : '') +
+      (l.lotNo ? '<div class="small muted">批號 ' + esc(l.lotNo) + '</div>' : '') + '</td><td class="num">' + fmtQ(l.qty) + '</td><td class="small muted">' + esc(l.source) + '</td></tr>';
+  }).join('');
+  openModal('<h2>' + esc(p.name) + '</h2>' +
+    '<div class="muted small">' + esc([p.group, p.spec, p.category, p.unit].filter(Boolean).join('・')) + '</div>' +
+    '<div class="row" style="margin:10px 0"><div class="grow"><div class="muted small">目前庫存</div><div style="font-size:28px;font-weight:700">' + fmtQ(p.qty) + '</div></div>' +
+    '<div class="grow"><div class="muted small">安全庫存</div><div style="font-size:20px">' + fmtQ(p.safety) + '</div></div>' +
+    '<div class="grow"><div class="muted small">檯面試用</div><div style="font-size:20px">' + fmtQ(p.tester) + '</div></div></div>' +
+    '<div>' + stockBadge(p) + expBadge(p.expStatus, p.earliest, p.daysLeft) + '</div>' +
+    '<h3 style="font-size:13px;color:var(--muted);margin:14px 0 4px">批次（先到期的先出）</h3>' +
+    (lots ? '<table class="t"><tr><th>效期</th><th class="num">數量</th><th>來源</th></tr>' + lots + '</table>' : '<div class="muted">沒有庫存</div>') +
+    (p.note ? '<div class="small muted" style="margin-top:8px">備註：' + esc(p.note) + '</div>' : '') +
+    '<div class="acts"><button class="btn" id="mdHist">異動紀錄</button>' + (isBoss() ? '<button class="btn" id="mdEdit">編輯商品</button>' : '') +
+    '<button class="btn" id="mdIn">進貨</button><button class="btn primary" id="mdOut">出貨</button></div>',
+    function () {
+      $('mdOut').onclick = function () { closeModal(); S.picks.ship = id; S.tab = 'ship'; render(); };
+      $('mdIn').onclick = function () { closeModal(); S.picks.receive = id; S.tab = 'receive'; render(); };
+      $('mdHist').onclick = function () { closeModal(); S.logFilter = { productId: id }; S.tab = 'log'; S.logTab = 'moves'; render(); };
+      if ($('mdEdit')) $('mdEdit').onclick = function () { editProduct(id); };
+    });
+}
+
+/* ---------- 出貨 ---------- */
+VIEWS.ship = function () {
+  var purposes = S.data.lists.purposes;
+  S.shipPurpose = S.shipPurpose || '銷售';
+  $('main').innerHTML = '<div class="card"><h2>出貨／領用</h2>' +
+    '<label class="f">商品</label>' + pickerHtml('ship') +
+    '<label class="f">數量</label><input type="number" id="shQty" inputmode="decimal" min="0" step="0.1" value="1">' +
+    '<label class="f">用途</label><div class="chips" id="shPur">' + purposes.map(function (x) {
+      return '<button class="chip' + (S.shipPurpose === x ? ' on' : '') + '" data-v="' + esc(x) + '">' + esc(x) + '</button>'; }).join('') + '</div>' +
+    '<label class="f">日期</label><input type="date" id="shDate" value="' + S.data.today + '">' +
+    '<label class="f">備註（選填，例如客人名字）</label><input type="text" id="shNote">' +
+    '<div class="small muted" id="shHint" style="margin-top:8px"></div>' +
+    '<div class="err" id="shErr"></div>' +
+    '<button class="btn primary block" id="shGo">確認出貨</button></div>' +
+    '<div class="note small">系統會自動從<b>最早到期</b>的那批扣庫存（先到期先出）。</div>';
+  function hint() {
+    var p = S.picks.ship ? prodById(S.picks.ship) : null;
+    if (!p) { $('shHint').textContent = ''; return; }
+    var q = Number($('shQty').value) || 0, left = q, parts = [];
+    p.lots.forEach(function (l) { if (left > 0) { var t = Math.min(l.qty, left); left -= t; parts.push((l.expiry || '效期未登記') + ' × ' + fmtQ(t)); } });
+    $('shHint').textContent = q > p.qty ? '⚠ 庫存不夠（目前 ' + fmtQ(p.qty) + '）' : (parts.length ? '會扣：' + parts.join('、') : '');
+  }
+  bindPicker('ship', hint);
+  $('shQty').oninput = hint; hint();
+  $('shPur').onclick = function (e) { var b = e.target.closest('.chip'); if (!b) return; S.shipPurpose = b.dataset.v;
+    Array.prototype.forEach.call(this.children, function (c) { c.classList.toggle('on', c === b); }); };
+  $('shGo').onclick = function () {
+    $('shErr').textContent = '';
+    if (!S.picks.ship) { $('shErr').textContent = '請先選商品'; return; }
+    var p = prodById(S.picks.ship), q = $('shQty').value;
+    this.disabled = true; var btn = this;
+    call('ship', { productId: p.id, qty: q, purpose: S.shipPurpose, date: $('shDate').value, note: $('shNote').value })
+      .then(function (st) { toast('已出貨：' + p.name + ' × ' + fmtQ(q)); S.picks.ship = null; applyState(st); })
+      .catch(function (e) { $('shErr').textContent = e.message; btn.disabled = false; });
+  };
+};
+
+/* ---------- 進貨 ---------- */
+VIEWS.receive = function () {
+  $('main').innerHTML = '<div class="card"><h2>進貨入庫</h2>' +
+    '<label class="f">商品</label>' + pickerHtml('receive') +
+    '<label class="f">數量</label><input type="number" id="rcQty" inputmode="decimal" min="0" step="0.1" value="1">' +
+    '<label class="f">有效期限（看外盒；只有年月就選該月 1 號）</label><input type="date" id="rcExp">' +
+    '<label class="row small muted" style="margin-top:6px;gap:6px"><input type="checkbox" id="rcNoExp" style="width:auto;min-height:0"> 這個商品沒有效期</label>' +
+    '<label class="f">批號（選填）</label><input type="text" id="rcLot">' +
+    '<label class="f">進貨日期</label><input type="date" id="rcDate" value="' + S.data.today + '">' +
+    '<label class="f">備註（選填，例如廠商）</label><input type="text" id="rcNote">' +
+    '<div class="err" id="rcErr"></div>' +
+    '<button class="btn primary block" id="rcGo">確認進貨</button></div>';
+  bindPicker('receive');
+  $('rcNoExp').onchange = function () { $('rcExp').disabled = this.checked; if (this.checked) $('rcExp').value = ''; };
+  $('rcGo').onclick = function () {
+    $('rcErr').textContent = '';
+    if (!S.picks.receive) { $('rcErr').textContent = '請先選商品'; return; }
+    if (!$('rcExp').value && !$('rcNoExp').checked) { $('rcErr').textContent = '請填有效期限，或勾選「沒有效期」'; return; }
+    var p = prodById(S.picks.receive), q = $('rcQty').value, btn = this; btn.disabled = true;
+    call('receive', { productId: p.id, qty: q, expiry: $('rcExp').value, lotNo: $('rcLot').value, date: $('rcDate').value, note: $('rcNote').value })
+      .then(function (st) { toast('已進貨：' + p.name + ' × ' + fmtQ(q)); S.picks.receive = null; applyState(st); })
+      .catch(function (e) { $('rcErr').textContent = e.message; btn.disabled = false; });
+  };
+};
+
+/* ---------- 盤點 ---------- */
+VIEWS.count = function () {
+  S.countVals = S.countVals || {};
+  S.countGroup = S.countGroup === undefined ? '' : S.countGroup;
+  var reasons = S.data.lists.reasons;
+  var ps = S.data.products.filter(function (p) { return p.active && (!S.countGroup || p.group === S.countGroup); });
+  var html = '<div class="card"><h2>盤點</h2><div class="note small">點清實際數量填進「實盤」。和帳面不一樣的要選差異原因，送出後系統會調整庫存並算出盤點準確率。沒填的商品不會被盤點。</div>' +
+    '<div class="chips" style="margin:10px 0" id="cgChips"><button class="chip' + (!S.countGroup ? ' on' : '') + '" data-g="">全部</button>' +
+    groups().map(function (g) { return '<button class="chip' + (S.countGroup === g ? ' on' : '') + '" data-g="' + esc(g) + '">' + esc(g) + '</button>'; }).join('') + '</div>' +
+    '<div class="row small muted" style="justify-content:space-between"><span>商品</span><span>帳面　　　實盤</span></div><div id="crows">';
+  ps.forEach(function (p) {
+    var v = S.countVals[p.id] || {};
+    var has = v.actual !== undefined && v.actual !== '';
+    var diff = has ? Math.round((Number(v.actual) - p.qty) * 100) / 100 : 0;
+    html += '<div class="crow' + (has && diff !== 0 ? ' diff' : '') + '" data-id="' + p.id + '"><div><div>' + esc(p.name) + '</div>' +
+      (has && diff !== 0 ? '<div class="small" style="color:var(--warn)">差異 ' + (diff > 0 ? '+' : '') + fmtQ(diff) + '</div>' : '') + '</div>' +
+      '<div class="book">' + fmtQ(p.qty) + '</div><input type="number" inputmode="decimal" min="0" step="0.1" class="cin" value="' + (has ? esc(v.actual) : '') + '">' +
+      (has && diff !== 0 ? '<select class="rsn"><option value="">請選差異原因…</option>' + reasons.map(function (r) {
+        return '<option' + (v.reason === r ? ' selected' : '') + '>' + esc(r) + '</option>'; }).join('') + '</select>' : '') + '</div>';
+  });
+  var filled = Object.keys(S.countVals).filter(function (k) { return S.countVals[k].actual !== undefined && S.countVals[k].actual !== ''; }).length;
+  html += '</div><div class="err" id="cErr"></div><div class="row" style="margin-top:10px"><button class="btn" id="cClear">清空</button>' +
+    '<button class="btn primary grow" id="cGo">送出盤點（已填 ' + filled + ' 項）</button></div></div>' +
+    '<div class="card"><h2>最近盤點</h2><div id="chist" class="muted small">載入中…</div></div>';
+  $('main').innerHTML = html;
+
+  $('cgChips').onclick = function (e) { var b = e.target.closest('.chip'); if (!b) return; S.countGroup = b.dataset.g; VIEWS.count(); };
+  $('crows').addEventListener('change', function (e) {
+    var row = e.target.closest('.crow'); if (!row) return;
+    var id = row.dataset.id; S.countVals[id] = S.countVals[id] || {};
+    if (e.target.classList.contains('cin')) S.countVals[id].actual = e.target.value;
+    if (e.target.classList.contains('rsn')) { S.countVals[id].reason = e.target.value; return; }
+    var y = window.scrollY; VIEWS.count(); window.scrollTo(0, y);
+  });
+  $('cClear').onclick = function () { confirmBox('清空盤點', '確定要清空已填的實盤數量嗎？', '清空', true).then(function (ok) { if (ok) { S.countVals = {}; VIEWS.count(); } }); };
+  $('cGo').onclick = function () {
+    $('cErr').textContent = '';
+    var items = [];
+    Object.keys(S.countVals).forEach(function (id) {
+      var v = S.countVals[id]; if (v.actual === undefined || v.actual === '') return;
+      items.push({ productId: id, actual: v.actual, reason: v.reason || '' });
+    });
+    if (!items.length) { $('cErr').textContent = '還沒有填任何實盤數量'; return; }
+    var miss = items.filter(function (it) { var p = prodById(it.productId); return Math.round((Number(it.actual) - p.qty) * 100) !== 0 && !it.reason; });
+    if (miss.length) { $('cErr').textContent = '有 ' + miss.length + ' 項有差異但還沒選原因：' + miss.map(function (m) { return prodById(m.productId).name; }).join('、'); return; }
+    confirmBox('送出盤點', '共 ' + items.length + ' 項，送出後會依實盤調整庫存。', '送出').then(function (ok) {
+      if (!ok) return;
+      call('count', { items: items }).then(function (st) {
+        var r = st.countResult; S.countVals = {}; applyState(st);
+        openModal('<h2>盤點完成</h2><div>盤點單 ' + esc(r.sheetNo) + '</div><div style="font-size:32px;font-weight:700;margin:8px 0">準確率 ' + r.accuracy + '%</div>' +
+          '<div class="muted">共 ' + r.total + ' 項，' + r.matched + ' 項與帳面相符</div><div class="acts"><button class="btn primary" onclick="closeModal()">好</button></div>');
+      }).catch(function (e) { $('cErr').textContent = e.message; });
+    });
+  };
+  call('counts').then(function (list) {
+    if (!$('chist')) return;
+    $('chist').innerHTML = list.length ? '<table class="t"><tr><th>時間</th><th>盤點人</th><th class="num">項數</th><th class="num">準確率</th></tr>' +
+      list.map(function (s, i) { return '<tr data-i="' + i + '" style="cursor:pointer"><td>' + esc(s.time.slice(0, 16)) + '</td><td>' + esc(s.person) + '</td><td class="num">' + s.items.length + '</td><td class="num">' + s.accuracy + '%</td></tr>'; }).join('') + '</table>' : '還沒有盤點紀錄';
+    var tb = $('chist').querySelector('table');
+    if (tb) tb.onclick = function (e) {
+      var tr = e.target.closest('tr[data-i]'); if (!tr) return; var s = list[+tr.dataset.i];
+      openModal('<h2>盤點單 ' + esc(s.sheetNo) + '</h2><div class="muted small">' + esc(s.time) + '・' + esc(s.person) + '・準確率 ' + s.accuracy + '%</div><div class="scroll-x"><table class="t"><tr><th>商品</th><th class="num">帳面</th><th class="num">實盤</th><th class="num">差異</th><th>原因</th></tr>' +
+        s.items.map(function (it) { return '<tr><td>' + esc(it.name) + '</td><td class="num">' + fmtQ(it.book) + '</td><td class="num">' + fmtQ(it.actual) + '</td><td class="num">' + (it.diff ? fmtQ(it.diff) : '') + '</td><td>' + esc(it.reason) + '</td></tr>'; }).join('') +
+        '</table></div><div class="acts"><button class="btn" onclick="closeModal()">關閉</button></div>');
+    };
+  }).catch(function () { if ($('chist')) $('chist').textContent = '讀取失敗'; });
+};
+
+/* ---------- 效期 ---------- */
+VIEWS.expiry = function () {
+  S.expF = S.expF || 'soon';
+  var rows = [];
+  S.data.products.forEach(function (p) {
+    if (!p.active) return;
+    p.lots.forEach(function (l) { rows.push({ p: p, l: l }); });
+  });
+  var cnt = { bad: 0, soon: 0, none: 0 };
+  rows.forEach(function (r) { if (r.l.status === '已過期') cnt.bad++; else if (r.l.status === '即期') cnt.soon++; if (!r.l.expiry) cnt.none++; });
+  rows = rows.filter(function (r) {
+    if (S.expF === 'soon') return r.l.status === '已過期' || r.l.status === '即期';
+    if (S.expF === 'none') return !r.l.expiry;
+    return true;
+  }).sort(function (a, b) {
+    if (a.l.expiry && b.l.expiry) return a.l.expiry < b.l.expiry ? -1 : 1;
+    return a.l.expiry ? -1 : b.l.expiry ? 1 : 0;
+  });
+  var html = '<div class="card"><h2>效期管理</h2><div class="muted small">即期＝' + S.data.settings.nearDays + ' 天內到期。' + (isBoss() ? '可在這裡處理過期／即期品（報廢、退貨、出清、轉試用）。' : '過期／即期品的處理由老闆操作。') + '</div>' +
+    '<div class="chips" style="margin:10px 0" id="exChips">' +
+    [['soon', '過期＋即期（' + (cnt.bad + cnt.soon) + '）'], ['all', '全部批次'], ['none', '效期未登記（' + cnt.none + '）']].map(function (x) {
+      return '<button class="chip' + (S.expF === x[0] ? ' on' : '') + '" data-v="' + x[0] + '">' + x[1] + '</button>'; }).join('') + '</div>';
+  html += rows.length ? '<div class="scroll-x"><table class="t"><tr><th>商品</th><th>效期</th><th class="num">數量</th><th></th></tr>' +
+    rows.map(function (r) {
+      return '<tr><td>' + esc(r.p.name) + (r.l.lotNo ? '<div class="small muted">批號 ' + esc(r.l.lotNo) + '</div>' : '') + '</td><td>' +
+        (r.l.expiry ? esc(r.l.expiry) + '<br>' + (r.l.status === '已過期' ? '<span class="badge b-bad">已過期</span>' : r.l.status === '即期' ? '<span class="badge b-warn">剩 ' + r.l.daysLeft + ' 天</span>' : '<span class="badge b-ok">剩 ' + r.l.daysLeft + ' 天</span>') : '<span class="muted">未登記</span>') +
+        '</td><td class="num">' + fmtQ(r.l.qty) + '</td><td style="white-space:nowrap">' +
+        (!r.l.expiry ? '<button class="btn sm" data-fix="' + r.l.id + '" data-p="' + r.p.id + '">補效期</button> ' : '') +
+        (isBoss() ? '<button class="btn sm" data-lot="' + r.l.id + '" data-p="' + r.p.id + '">處理</button>' : '') + '</td></tr>';
+    }).join('') + '</table></div>' : '<div class="muted" style="padding:16px 0">沒有符合的批次 👍</div>';
+  if (S.expF === 'none' && cnt.none) html += '<div class="note small" style="margin-top:10px">「效期未登記」是舊表沒記到效期的數量。整理倉庫或盤點時看一下外盒，按「補效期」填上；同一批有不同效期的，可以分次補（例如 6 瓶裡 2 瓶是 2027-01、4 瓶是 2027-05）。沒有效期的耗材（針頭、滾針）不用補。</div>';
+  html += '</div>';
+  $('main').innerHTML = html;
+  $('exChips').onclick = function (e) { var b = e.target.closest('.chip'); if (!b) return; S.expF = b.dataset.v; VIEWS.expiry(); };
+  Array.prototype.forEach.call(document.querySelectorAll('[data-lot]'), function (b) { b.onclick = function () { expiryDialog(b.dataset.p, b.dataset.lot); }; });
+  Array.prototype.forEach.call(document.querySelectorAll('[data-fix]'), function (b) { b.onclick = function () { fixExpiryDialog(b.dataset.p, b.dataset.fix); }; });
+};
+
+function fixExpiryDialog(pid, lotId) {
+  var p = prodById(pid), l = null;
+  p.lots.forEach(function (x) { if (x.id === lotId) l = x; });
+  openModal('<h2>補登效期</h2><div><b>' + esc(p.name) + '</b>　效期未登記 ' + fmtQ(l.qty) + '</div>' +
+    '<label class="f">有效期限（只有年月就選該月 1 號）</label><input type="date" id="fxE">' +
+    '<label class="f">這個效期的數量</label><input type="number" id="fxQ" inputmode="decimal" step="0.1" min="0" value="' + fmtQ(l.qty) + '">' +
+    '<div class="small muted" style="margin-top:4px">數量比 ' + fmtQ(l.qty) + ' 少的話，剩下的會繼續留在「效期未登記」，可以再補。</div>' +
+    '<label class="f">批號（選填）</label><input type="text" id="fxL">' +
+    '<div class="err" id="fxErr"></div><div class="acts"><button class="btn" onclick="closeModal()">取消</button><button class="btn primary" id="fxGo">儲存</button></div>',
+    function () {
+      $('fxGo').onclick = function () {
+        if (!$('fxE').value) { $('fxErr').textContent = '請填效期'; return; }
+        call('setLotExpiry', { lotId: lotId, qty: $('fxQ').value, expiry: $('fxE').value, lotNo: $('fxL').value })
+          .then(function (st) { closeModal(); toast('已補登效期：' + p.name); applyState(st); })
+          .catch(function (e) { $('fxErr').textContent = e.message; });
+      };
+    });
+}
+
+function expiryDialog(pid, lotId) {
+  var p = prodById(pid), l = null;
+  p.lots.forEach(function (x) { if (x.id === lotId) l = x; });
+  var acts = S.data.lists.expiryActions;
+  openModal('<h2>處理批次</h2><div><b>' + esc(p.name) + '</b>　效期 ' + esc(l.expiry || '未登記') + '　剩 ' + fmtQ(l.qty) + '</div>' +
+    '<label class="f">處理方式</label><div class="chips" id="exA">' + acts.map(function (a, i) { return '<button class="chip' + (i === 0 ? ' on' : '') + '" data-v="' + esc(a) + '">' + esc(a) + '</button>'; }).join('') + '</div>' +
+    '<div class="small muted" style="margin-top:6px">「轉試用」會從庫存扣掉並加到檯面試用數量。</div>' +
+    '<label class="f">數量</label><input type="number" id="exQ" inputmode="decimal" step="0.1" min="0" value="' + fmtQ(l.qty) + '">' +
+    '<label class="f">備註</label><input type="text" id="exN">' +
+    '<div class="err" id="exErr"></div><div class="acts"><button class="btn" onclick="closeModal()">取消</button><button class="btn danger" id="exGo">確認處理</button></div>',
+    function () {
+      var act = acts[0];
+      $('exA').onclick = function (e) { var b = e.target.closest('.chip'); if (!b) return; act = b.dataset.v; Array.prototype.forEach.call(this.children, function (c) { c.classList.toggle('on', c === b); }); };
+      $('exGo').onclick = function () {
+        call('expiryAction', { lotId: lotId, qty: $('exQ').value, action: act, note: $('exN').value })
+          .then(function (st) { closeModal(); toast('已處理：' + p.name + ' ' + act); applyState(st); })
+          .catch(function (e) { $('exErr').textContent = e.message; });
+      };
+    });
+}
+
+/* ---------- 紀錄 ---------- */
+VIEWS.log = function () {
+  S.logTab = S.logTab || 'moves';
+  S.logFilter = S.logFilter || {};
+  var f = S.logFilter;
+  var html = '<div class="chips" style="margin:12px 0" id="lgT">' +
+    [['moves', '進出貨紀錄'], ['logins', '登入紀錄']].map(function (x) { return '<button class="chip' + (S.logTab === x[0] ? ' on' : '') + '" data-v="' + x[0] + '">' + x[1] + '</button>'; }).join('') + '</div>';
+  if (S.logTab === 'moves') {
+    var types = ['', '出貨', '進貨', '盤點調整', '效期處理', '補登效期', '商品異動', '匯入'];
+    html += '<div class="card"><div class="row"><select id="lgType" class="grow">' + types.map(function (t) { return '<option value="' + t + '"' + (f.type === t ? ' selected' : '') + '>' + (t || '全部類型') + '</option>'; }).join('') + '</select>' +
+      '<select id="lgPerson" class="grow"><option value="">全部人員</option>' + S.data.staff.map(function (n) { return '<option' + (f.person === n ? ' selected' : '') + '>' + esc(n) + '</option>'; }).join('') + '</select></div>' +
+      (f.productId ? '<div class="note small" style="margin-top:8px">只看：' + esc((prodById(f.productId) || {}).name || '') + '　<a href="#" id="lgClrP">看全部商品</a></div>' : '') +
+      '<div id="lgBody" class="muted small" style="margin-top:10px">載入中…</div></div>';
+  } else {
+    html += '<div class="card"><div id="lgBody" class="muted small">載入中…</div></div>';
+  }
+  $('main').innerHTML = html;
+  $('lgT').onclick = function (e) { var b = e.target.closest('.chip'); if (!b) return; S.logTab = b.dataset.v; VIEWS.log(); };
+  if (S.logTab === 'moves') {
+    $('lgType').onchange = function () { f.type = this.value; VIEWS.log(); };
+    $('lgPerson').onchange = function () { f.person = this.value; VIEWS.log(); };
+    if ($('lgClrP')) $('lgClrP').onclick = function (e) { e.preventDefault(); delete f.productId; VIEWS.log(); };
+    call('moves', { type: f.type, person: f.person, productId: f.productId, limit: 300 }).then(function (rows) {
+      if (!$('lgBody')) return;
+      $('lgBody').classList.remove('muted', 'small');
+      $('lgBody').innerHTML = rows.length ? '<div class="scroll-x"><table class="t"><tr><th>日期</th><th>類型</th><th>商品</th><th class="num">數量</th><th>用途/明細</th><th>人員</th></tr>' +
+        rows.map(function (r) {
+          var cls = r.type === '出貨' ? 'b-info' : r.type === '進貨' ? 'b-ok' : r.type === '效期處理' ? 'b-bad' : r.type === '盤點調整' ? 'b-warn' : 'b-mute';
+          return '<tr><td class="small">' + esc(r.date) + (r.source === 'App' ? '<div class="muted">' + esc(r.time.slice(11, 16)) + '</div>' : '<div class="muted">舊表</div>') + '</td><td><span class="badge ' + cls + '">' + esc(r.type) + '</span></td><td>' + esc(r.name) + '</td><td class="num">' + esc(fmtQ(r.qty)) + '</td><td class="small">' + esc(r.reason) +
+            (r.detail ? '<div class="muted">' + esc(r.detail) + '</div>' : '') + (r.note ? '<div class="muted">' + esc(r.note) + '</div>' : '') + '</td><td>' + esc(r.person) + '</td></tr>';
+        }).join('') + '</table></div><div class="small muted" style="margin-top:6px">顯示最近 ' + rows.length + ' 筆</div>' : '<div class="muted">沒有紀錄</div>';
+    }).catch(function (e) { if ($('lgBody')) $('lgBody').textContent = e.message; });
+  } else {
+    call('logins', { limit: 300 }).then(function (rows) {
+      if (!$('lgBody')) return;
+      $('lgBody').classList.remove('muted', 'small');
+      $('lgBody').innerHTML = rows.length ? '<table class="t"><tr><th>時間</th><th>姓名</th><th>身分</th><th>結果</th></tr>' +
+        rows.map(function (r) { return '<tr><td class="small">' + esc(r.time) + '</td><td>' + esc(r.name) + '</td><td>' + esc(r.role) + '</td><td>' + (r.result === '成功' ? '<span class="badge b-ok">成功</span>' : '<span class="badge b-bad">' + esc(r.result) + '</span>') + '</td></tr>'; }).join('') + '</table>' : '<div class="muted">沒有紀錄</div>';
+    }).catch(function (e) { if ($('lgBody')) $('lgBody').textContent = e.message; });
+  }
+};
+
+/* ---------- 管理（老闆） ---------- */
+VIEWS.admin = function () {
+  if (!isBoss()) { S.tab = 'stock'; return render(); }
+  var st = S.data;
+  var html = '';
+  html += '<div class="card"><h2>從舊表匯入</h2><div class="small muted">從 Google 試算表「好肌府_庫存效期表」讀取最新的商品、目前庫存、效期，以及過去的進出貨紀錄。</div>' +
+    (st.imported ? '<div class="warnbox" style="margin-top:8px">已經匯入過。重新匯入會<b>清掉新系統所有庫存與紀錄</b>，改用舊表當下的資料（登入紀錄保留）。</div>' +
+      '<label class="row small" style="margin-top:8px;gap:6px"><input type="checkbox" id="imOver" style="width:auto;min-height:0"> 我確定要覆蓋</label>' : '') +
+    '<div class="err" id="imErr"></div><button class="btn primary" id="imGo">' + (st.imported ? '重新匯入' : '從舊表匯入') + '</button><div id="imRep"></div></div>';
+  html += '<div class="card"><h2>商品管理</h2><div class="row"><button class="btn primary" id="addP">＋ 新增商品</button></div>' +
+    '<div class="small muted" style="margin-top:8px">點商品可以修改名稱、安全庫存等；「刪除」會停用商品，歷史紀錄保留，之後可以重新啟用。</div><div id="pAdmin" style="margin-top:8px"></div></div>';
+  html += '<div class="card"><h2>人員名單</h2><div id="staffBox" class="muted small">載入中…</div></div>';
+  html += '<div class="card"><h2>密碼</h2><label class="f">新的老闆密碼（不改就空白）</label><input type="password" id="pwB" autocomplete="new-password">' +
+    '<label class="f">新的員工共用密碼（不改就空白）</label><input type="password" id="pwS" autocomplete="new-password"><div class="err" id="pwErr"></div><button class="btn" id="pwGo">更新密碼</button></div>';
+  html += '<div class="card"><h2>設定</h2><label class="f">幾天內到期算「即期」</label><div class="row"><input type="number" id="nd" value="' + st.settings.nearDays + '" style="max-width:120px"><button class="btn" id="ndGo">儲存</button></div></div>';
+  html += '<div class="card"><h2>資料與備份</h2><div id="bkBox" class="muted small">載入中…</div></div>';
+  $('main').innerHTML = html;
+
+  var all = st.products;
+  $('pAdmin').innerHTML = all.length ? '<div class="plist">' + all.map(function (p) {
+    return '<div class="pitem' + (p.active ? '' : ' off') + '" data-id="' + p.id + '"><div class="grow"><div class="nm">' + esc(p.name) + (p.active ? '' : ' <span class="badge b-mute">已停用</span>') + '</div><div class="sub">' + esc(p.group) + '・安全庫存 ' + fmtQ(p.safety) + '</div></div><div class="qty">' + fmtQ(p.qty) + '</div></div>';
+  }).join('') + '</div>' : '<div class="muted small">還沒有商品</div>';
+  $('pAdmin').onclick = function (e) { var it = e.target.closest('.pitem'); if (it) editProduct(it.dataset.id); };
+  $('addP').onclick = function () { editProduct(null); };
+
+  $('imGo').onclick = function () {
+    $('imErr').textContent = '';
+    var over = $('imOver') ? $('imOver').checked : false;
+    if (st.imported && !over) { $('imErr').textContent = '要重新匯入請先勾選「我確定要覆蓋」'; return; }
+    confirmBox(st.imported ? '重新匯入' : '從舊表匯入', st.imported ? '新系統目前的庫存與進出貨紀錄會被舊表資料取代，確定嗎？' : '會讀取舊表最新資料建立新系統，大約需要 10～30 秒。', '開始匯入', st.imported).then(function (ok) {
+      if (!ok) return;
+      $('imGo').disabled = true; $('imGo').textContent = '匯入中…';
+      call('importOld', { overwrite: over }).then(function (res) {
+        var rep = res.importReport || [];
+        applyState(res);
+        openModal('<h2>匯入完成</h2><ul>' + rep.map(function (r) { return '<li>' + esc(r) + '</li>'; }).join('') + '</ul>' +
+          '<div class="note small">已自動開啟「每晚 23:00 備份」。建議到「效期 → 效期未登記」看看哪些商品需要補效期。</div><div class="acts"><button class="btn primary" onclick="closeModal()">好</button></div>');
+      }).catch(function (e) { $('imErr').textContent = e.message; $('imGo').disabled = false; $('imGo').textContent = '重試匯入'; });
+    });
+  };
+  $('pwGo').onclick = function () {
+    $('pwErr').textContent = '';
+    var b = $('pwB').value, s = $('pwS').value;
+    if (!b && !s) { $('pwErr').textContent = '請輸入要更新的密碼'; return; }
+    call('changePasswords', { bossPw: b, staffPw: s }).then(function () { $('pwB').value = ''; $('pwS').value = ''; toast('密碼已更新'); })
+      .catch(function (e) { $('pwErr').textContent = e.message; });
+  };
+  $('ndGo').onclick = function () { call('setSettings', { nearDays: $('nd').value }).then(function (st2) { toast('已儲存'); applyState(st2); }).catch(function (e) { toast(e.message); }); };
+
+  call('getAdminInfo').then(function (info) {
+    if (!$('bkBox')) return;
+    drawStaff(info.staffAll);
+    $('bkBox').classList.remove('muted', 'small');
+    $('bkBox').innerHTML = '<div><a href="' + esc(info.sheetUrl) + '" target="_blank">打開資料試算表「好肌府庫存系統資料」↗</a></div>' +
+      '<div class="small muted" style="margin-top:6px">所有操作都即時寫進這份試算表。請不要直接在試算表裡改數字，要改請用這個網頁。</div>' +
+      '<table class="t" style="margin-top:8px"><tr><td>每晚自動備份</td><td>' + (info.backupOn ? '<span class="badge b-ok">已開啟（每晚 23:00）</span>' : '<span class="badge b-warn">未開啟</span>') + '</td></tr>' +
+      '<tr><td>上次備份</td><td>' + esc(info.lastBackup || '還沒有') + '</td></tr><tr><td>上次匯入舊表</td><td>' + esc(info.importedAt || '還沒有') + '</td></tr></table>' +
+      '<div class="small muted" style="margin-top:6px">備份存在雲端硬碟「好肌府庫存備份」資料夾，保留最近 30 份。</div>' +
+      '<button class="btn" id="bkGo" style="margin-top:8px">' + (info.backupOn ? '立即備份一次' : '開啟每晚備份並立即備份') + '</button>';
+    $('bkGo').onclick = function () {
+      this.disabled = true;
+      call('backupNow').then(function (r) { toast('備份完成：' + r.name); VIEWS.admin(); }).catch(function (e) { toast(e.message); VIEWS.admin(); });
+    };
+  }).catch(function (e) { if ($('bkBox')) $('bkBox').textContent = e.message; });
+};
+
+function drawStaff(list) {
+  var box = $('staffBox'); if (!box) return;
+  box.classList.remove('muted', 'small');
+  box.innerHTML = '<div class="small muted">登入畫面會列出「啟用」的人。</div><table class="t">' + list.map(function (s, i) {
+    return '<tr><td>' + esc(s.name) + '</td><td><label class="row small" style="gap:6px"><input type="checkbox" data-i="' + i + '" ' + (s.active ? 'checked' : '') + ' style="width:auto;min-height:0">啟用</label></td></tr>';
+  }).join('') + '</table><div class="row" style="margin-top:8px"><input type="text" id="newStaff" placeholder="新增人員名字" class="grow"><button class="btn" id="addStaff">新增</button></div><div class="err" id="stErr"></div>';
+  function save(nl) {
+    call('setStaff', { staff: nl }).then(function (info) { toast('名單已更新'); drawStaff(info.staffAll); call('state').then(applyState); })
+      .catch(function (e) { $('stErr').textContent = e.message; });
+  }
+  box.querySelector('table').onchange = function (e) {
+    var i = +e.target.dataset.i; var nl = list.map(function (x) { return { name: x.name, active: x.active }; }); nl[i].active = e.target.checked; save(nl);
+  };
+  $('addStaff').onclick = function () {
+    var n = $('newStaff').value.trim(); if (!n) return;
+    if (list.some(function (x) { return x.name === n; })) { $('stErr').textContent = '名單已經有這個名字'; return; }
+    save(list.concat([{ name: n, active: true }]));
+  };
+}
+
+function editProduct(id) {
+  var p = id ? prodById(id) : { name: '', group: S.filter.group || '', spec: '', category: '', unit: '', safety: null, tester: null, note: '', active: true };
+  var gs = groups();
+  openModal('<h2>' + (id ? '編輯商品' : '新增商品') + '</h2>' +
+    '<label class="f">商品名稱</label><input type="text" id="epName" value="' + esc(p.name) + '">' +
+    '<label class="f">分組</label><input type="text" id="epGroup" list="epGroups" value="' + esc(p.group) + '"><datalist id="epGroups">' + gs.map(function (g) { return '<option value="' + esc(g) + '">'; }).join('') + '</datalist>' +
+    '<div class="row"><div class="grow"><label class="f">規格</label><input type="text" id="epSpec" value="' + esc(p.spec) + '"></div>' +
+    '<div class="grow"><label class="f">類別</label><input type="text" id="epCat" list="epCats" value="' + esc(p.category) + '"><datalist id="epCats"><option value="保養品"><option value="營養品"><option value="耗材"></datalist></div></div>' +
+    '<div class="row"><div class="grow"><label class="f">單位</label><input type="text" id="epUnit" value="' + esc(p.unit) + '"></div>' +
+    '<div class="grow"><label class="f">安全庫存（空白＝不預警）</label><input type="number" step="0.1" id="epSafe" value="' + (p.safety === null ? '' : p.safety) + '"></div>' +
+    '<div class="grow"><label class="f">檯面試用</label><input type="number" step="0.1" id="epTester" value="' + (p.tester === null ? '' : p.tester) + '"></div></div>' +
+    (id ? '' : '<div class="row"><div class="grow"><label class="f">期初數量（選填）</label><input type="number" step="0.1" id="epInit"></div><div class="grow"><label class="f">效期（選填）</label><input type="date" id="epExp"></div></div>') +
+    '<label class="f">備註</label><input type="text" id="epNote" value="' + esc(p.note) + '">' +
+    '<div class="err" id="epErr"></div><div class="acts">' +
+    (id ? (p.active ? '<button class="btn danger" id="epDel">刪除（停用）</button>' : '<button class="btn" id="epRe">重新啟用</button>') : '') +
+    '<button class="btn" onclick="closeModal()">取消</button><button class="btn primary" id="epSave">儲存</button></div>',
+    function () {
+      $('epSave').onclick = function () {
+        var payload = { name: $('epName').value, group: $('epGroup').value, spec: $('epSpec').value, category: $('epCat').value,
+          unit: $('epUnit').value, safety: $('epSafe').value, tester: $('epTester').value, note: $('epNote').value };
+        var act = 'addProduct';
+        if (id) { payload.id = id; act = 'updateProduct'; } else { payload.initQty = $('epInit').value; payload.expiry = $('epExp').value; }
+        call(act, payload).then(function (st) { closeModal(); toast('已儲存'); applyState(st); }).catch(function (e) { $('epErr').textContent = e.message; });
+      };
+      if ($('epDel')) $('epDel').onclick = function () {
+        confirmBox('刪除商品', '「' + esc(p.name) + '」會被停用，不再出現在庫存清單（歷史紀錄保留）。目前庫存 ' + fmtQ(p.qty) + '。確定嗎？', '刪除', true).then(function (ok) {
+          if (!ok) return editProduct(id);
+          call('setProductActive', { id: id, active: false }).then(function (st) { toast('已停用'); applyState(st); }).catch(function (e) { toast(e.message); });
+        });
+      };
+      if ($('epRe')) $('epRe').onclick = function () {
+        call('setProductActive', { id: id, active: true }).then(function (st) { closeModal(); toast('已重新啟用'); applyState(st); }).catch(function (e) { $('epErr').textContent = e.message; });
+      };
+    });
+}
+
+/* =========================================================
+ *  啟動
+ * ========================================================= */
+(function boot() {
+  S.token = lsGet('hjf_token');
+  if (S.token) enterApp(); else showLogin();
+})();
+</script>
+</body>
+</html>
