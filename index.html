@@ -78,6 +78,14 @@
   .picker .opt{padding:10px 12px;cursor:pointer;border-bottom:1px solid #f2ede8;display:flex;justify-content:space-between;gap:8px}
   .picker .opt:hover,.picker .opt.hl{background:var(--brand-soft)}
   .picked{margin-top:8px;padding:10px 12px;border-radius:10px;background:var(--brand-soft);font-size:14px}
+  /* ship plan */
+  .plan{margin-top:12px;border:2px solid var(--brand);border-radius:12px;padding:12px;background:var(--brand-soft)}
+  .plan.bad{border-color:var(--bad);background:var(--bad-soft)}
+  .plan .ttl{font-size:13px;color:var(--muted);font-weight:600}
+  .plan .pick{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin-top:4px}
+  .plan .exp{font-size:22px;font-weight:700}
+  .plan .times{font-size:18px;font-weight:700}
+  .plan .others{margin-top:8px;font-size:13px;color:var(--muted)}
   /* count */
   .crow{display:grid;grid-template-columns:1fr 64px 88px;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)}
   .crow .book{text-align:right;color:var(--muted);font-size:13px}
@@ -450,16 +458,47 @@ VIEWS.ship = function () {
       return '<button class="chip' + (S.shipPurpose === x ? ' on' : '') + '" data-v="' + esc(x) + '">' + esc(x) + '</button>'; }).join('') + '</div>' +
     '<label class="f">日期</label><input type="date" id="shDate" value="' + S.data.today + '">' +
     '<label class="f">備註（選填，例如客人名字）</label><input type="text" id="shNote">' +
-    '<div class="small muted" id="shHint" style="margin-top:8px"></div>' +
+    '<div id="shHint"></div>' +
     '<div class="err" id="shErr"></div>' +
-    '<button class="btn primary block" id="shGo">確認出貨</button></div>' +
-    '<div class="note small">系統會自動從<b>最早到期</b>的那批扣庫存（先到期先出）。</div>';
+    '<button class="btn primary block" id="shGo" style="margin-top:12px">確認出貨</button></div>' +
+    '<div class="note small">系統會自動從<b>最早到期</b>的那批扣庫存（先到期先出）。出貨前請對一下外盒效期，拿上面框框寫的那一批。</div>';
+  var lastPlan = '';
   function hint() {
     var p = S.picks.ship ? prodById(S.picks.ship) : null;
-    if (!p) { $('shHint').textContent = ''; return; }
-    var q = Number($('shQty').value) || 0, left = q, parts = [];
-    p.lots.forEach(function (l) { if (left > 0) { var t = Math.min(l.qty, left); left -= t; parts.push((l.expiry || '效期未登記') + ' × ' + fmtQ(t)); } });
-    $('shHint').textContent = q > p.qty ? '⚠ 庫存不夠（目前 ' + fmtQ(p.qty) + '）' : (parts.length ? '會扣：' + parts.join('、') : '');
+    lastPlan = '';
+    if (!p) { $('shHint').innerHTML = ''; return; }
+    var q = Math.round((Number($('shQty').value) || 0) * 100) / 100;
+    if (!p.lots.length) { $('shHint').innerHTML = '<div class="plan bad"><b>⚠ 這個商品目前沒有庫存</b></div>'; return; }
+    if (q > p.qty) { $('shHint').innerHTML = '<div class="plan bad"><b>⚠ 庫存不夠</b>：目前只有 ' + fmtQ(p.qty) + '</div>'; return; }
+    if (q <= 0) { $('shHint').innerHTML = ''; return; }
+    var left = q, picks = [], rest = [];
+    p.lots.forEach(function (l) {
+      var t = left > 0 ? Math.min(l.qty, left) : 0;
+      left = Math.round((left - t) * 100) / 100;
+      if (t > 0) picks.push({ l: l, t: t });
+      if (l.qty - t > 0) rest.push({ l: l, q: Math.round((l.qty - t) * 100) / 100 });
+    });
+    function expTxt(l) {
+      if (!l.expiry) return '效期未登記';
+      return '效期 ' + l.expiry;
+    }
+    function dayBadge(l) {
+      if (!l.expiry) return '';
+      if (l.status === '已過期') return '<span class="badge b-bad">已過期 ' + (-l.daysLeft) + ' 天</span>';
+      if (l.status === '即期') return '<span class="badge b-warn">剩 ' + l.daysLeft + ' 天</span>';
+      return '<span class="badge b-ok">剩 ' + l.daysLeft + ' 天</span>';
+    }
+    var expired = picks.some(function (x) { return x.l.status === '已過期'; });
+    var html = '<div class="plan' + (expired ? ' bad' : '') + '"><div class="ttl">📦 請拿這' + (picks.length > 1 ? '幾' : '一') + '批出貨（最早到期的先出）</div>';
+    picks.forEach(function (x, i) {
+      html += '<div class="pick">' + (picks.length > 1 ? '<span class="small muted">' + (i === 0 ? '先拿' : '再拿') + '</span>' : '') +
+        '<span class="exp">' + esc(expTxt(x.l)) + '</span><span class="times">× ' + fmtQ(x.t) + '</span>' + dayBadge(x.l) +
+        (x.l.lotNo ? '<span class="small muted">批號 ' + esc(x.l.lotNo) + '</span>' : '') + '</div>';
+    });
+    if (expired) html += '<div style="color:var(--bad);font-weight:600;margin-top:6px">⚠ 這批已經過期！除非是「過期清倉」，請先通知老闆處理。</div>';
+    html += '<div class="others">' + (rest.length ? '出貨後還剩：' + rest.map(function (r) { return esc(r.l.expiry || '效期未登記') + ' × ' + fmtQ(r.q); }).join('、') : '出貨後這個商品就沒有庫存了') + '</div></div>';
+    $('shHint').innerHTML = html;
+    lastPlan = picks.map(function (x) { return (x.l.expiry || '效期未登記') + (picks.length > 1 ? '×' + fmtQ(x.t) : ''); }).join('、');
   }
   bindPicker('ship', hint);
   $('shQty').oninput = hint; hint();
@@ -471,7 +510,7 @@ VIEWS.ship = function () {
     var p = prodById(S.picks.ship), q = $('shQty').value;
     this.disabled = true; var btn = this;
     call('ship', { productId: p.id, qty: q, purpose: S.shipPurpose, date: $('shDate').value, note: $('shNote').value })
-      .then(function (st) { toast('已出貨：' + p.name + ' × ' + fmtQ(q)); S.picks.ship = null; applyState(st); })
+      .then(function (st) { toast('已出貨：' + p.name + ' × ' + fmtQ(q) + (lastPlan ? '（' + lastPlan + '）' : '')); S.picks.ship = null; applyState(st); })
       .catch(function (e) { $('shErr').textContent = e.message; btn.disabled = false; });
   };
 };
@@ -673,11 +712,15 @@ VIEWS.log = function () {
       if (!$('lgBody')) return;
       $('lgBody').classList.remove('muted', 'small');
       $('lgBody').innerHTML = rows.length ? '<div class="scroll-x"><table class="t"><tr><th>日期</th><th>類型</th><th>商品</th><th class="num">數量</th><th>用途/明細</th><th>人員</th></tr>' +
-        rows.map(function (r) {
+        rows.map(function (r, i) {
           var cls = r.type === '出貨' ? 'b-info' : r.type === '進貨' ? 'b-ok' : r.type === '效期處理' ? 'b-bad' : r.type === '盤點調整' ? 'b-warn' : 'b-mute';
           return '<tr><td class="small">' + esc(r.date) + (r.source === 'App' ? '<div class="muted">' + esc(r.time.slice(11, 16)) + '</div>' : '<div class="muted">舊表</div>') + '</td><td><span class="badge ' + cls + '">' + esc(r.type) + '</span></td><td>' + esc(r.name) + '</td><td class="num">' + esc(fmtQ(r.qty)) + '</td><td class="small">' + esc(r.reason) +
-            (r.detail ? '<div class="muted">' + esc(r.detail) + '</div>' : '') + (r.note ? '<div class="muted">' + esc(r.note) + '</div>' : '') + '</td><td>' + esc(r.person) + '</td></tr>';
-        }).join('') + '</table></div><div class="small muted" style="margin-top:6px">顯示最近 ' + rows.length + ' 筆</div>' : '<div class="muted">沒有紀錄</div>';
+            (r.detail ? '<div class="muted">' + esc(r.detail) + '</div>' : '') + (r.note ? '<div class="muted">' + esc(r.note) + '</div>' : '') + '</td><td>' + esc(r.person) +
+            (isBoss() && r.deletable ? '<div><button class="btn sm" data-del="' + i + '" style="margin-top:4px;white-space:nowrap">刪除</button></div>' : '') + '</td></tr>';
+        }).join('') + '</table></div><div class="small muted" style="margin-top:6px">顯示最近 ' + rows.length + ' 筆' + (isBoss() ? '。新系統做的出貨／進貨可以刪除，庫存會自動還原。' : '') + '</div>' : '<div class="muted">沒有紀錄</div>';
+      Array.prototype.forEach.call(document.querySelectorAll('[data-del]'), function (b) {
+        b.onclick = function () { deleteMoveDialog(rows[+b.dataset.del]); };
+      });
     }).catch(function (e) { if ($('lgBody')) $('lgBody').textContent = e.message; });
   } else {
     call('logins', { limit: 300 }).then(function (rows) {
@@ -688,6 +731,22 @@ VIEWS.log = function () {
     }).catch(function (e) { if ($('lgBody')) $('lgBody').textContent = e.message; });
   }
 };
+
+function deleteMoveDialog(r) {
+  var effect = r.type === '出貨'
+    ? '庫存會<b>加回 ' + esc(fmtQ(r.qty)) + '</b>（回到原本的批次：' + esc(r.detail) + '）'
+    : '庫存會<b>扣掉 ' + esc(fmtQ(r.qty)) + '</b>（這批：' + esc(r.detail) + '）';
+  confirmBox('刪除這筆' + r.type + '？',
+    '<div style="margin-bottom:8px"><b>' + esc(r.name) + '</b> × ' + esc(fmtQ(r.qty)) + '　' + esc(r.reason || '') +
+    '<div class="small muted">' + esc(r.time) + '・' + esc(r.person) + '</div></div>' +
+    '<div>' + effect + '。</div><div class="small muted" style="margin-top:6px">被刪的紀錄會保留在試算表「已刪除紀錄」分頁，可以查得到。</div>',
+    '刪除', true).then(function (ok) {
+    if (!ok) return;
+    call('deleteMove', { row: r.row, time: r.time, productId: r.productId, type: r.type })
+      .then(function (st) { toast('已刪除，庫存已還原'); applyState(st); })
+      .catch(function (e) { toast(e.message); VIEWS.log(); });
+  });
+}
 
 /* ---------- 管理（老闆） ---------- */
 VIEWS.admin = function () {
