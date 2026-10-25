@@ -101,6 +101,12 @@
   .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#2f2a26;color:#fff;padding:10px 16px;border-radius:999px;z-index:60;font-size:14px;max-width:90vw}
   .loading{position:fixed;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,transparent,var(--brand),transparent);background-size:200% 100%;animation:ld 1s linear infinite;z-index:70}
   @keyframes ld{from{background-position:200% 0}to{background-position:-200% 0}}
+  .spin{display:inline-block;width:14px;height:14px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:sp .7s linear infinite;vertical-align:-2px;margin-right:6px}
+  @keyframes sp{to{transform:rotate(360deg)}}
+  .btn.is-busy{opacity:.85;cursor:progress}
+  .sync{position:fixed;top:10px;left:50%;transform:translateX(-50%);background:#2f2a26;color:#fff;padding:7px 14px;border-radius:999px;z-index:80;font-size:14px;box-shadow:0 4px 14px rgba(0,0,0,.2)}
+  .refreshing{font-size:12px;color:var(--muted);margin:4px 0}
+  tr.deleting{opacity:.4}
   /* login */
   .login{max-width:380px;margin:8vh auto;padding:0 16px}
   .login .logo{text-align:center;font-size:22px;font-weight:700;margin-bottom:4px}
@@ -111,6 +117,7 @@
 </head>
 <body>
 <div id="loading" class="loading hidden"></div>
+<div id="syncPill" class="sync hidden"><span class="spin"></span><span id="syncTxt">處理中…</span></div>
 
 <!-- ============ 登入 ============ -->
 <div id="loginView" class="login hidden">
@@ -184,15 +191,63 @@ function rawCall(req) {
     }, function () { throw new Error('連線失敗，請檢查網路後再試一次'); });
 }
 
+// 會改資料的操作：按下去馬上把按鈕變成「出貨中…」，畫面上方也顯示處理中，避免以為沒按到
+var WRITE_LABEL = {
+  login: '登入中…', setup: '設定中…', ship: '出貨中…', receive: '進貨中…', count: '送出盤點中…',
+  expiryAction: '處理中…', setLotExpiry: '儲存中…', addProduct: '儲存中…', updateProduct: '儲存中…',
+  setProductActive: '儲存中…', deleteMove: '刪除中…', setStaff: '儲存中…', changePasswords: '更新中…',
+  setSettings: '儲存中…', importOld: '匯入中…（約 10～30 秒）', backupNow: '備份中…', reloadData: '重新讀取中…'
+};
+var lastBtn = null, lastBtnAt = 0, writing = [];
+document.addEventListener('click', function (e) {
+  var b = e.target && e.target.closest ? e.target.closest('.btn') : null;
+  if (b) { lastBtn = b; lastBtnAt = Date.now(); }
+}, true);
+function syncPill() {
+  var el = document.getElementById('syncPill');
+  el.classList.toggle('hidden', !writing.length);
+  if (writing.length) document.getElementById('syncTxt').textContent = writing[writing.length - 1];
+}
+
 function call(action, payload) {
+  var label = WRITE_LABEL[action], btn = null, orig = '';
+  if (label) {
+    writing.push(label); syncPill();
+    if (lastBtn && Date.now() - lastBtnAt < 1000 && document.body.contains(lastBtn) && !lastBtn.classList.contains('is-busy')) {
+      btn = lastBtn; orig = btn.innerHTML;
+      btn.disabled = true; btn.classList.add('is-busy');
+      btn.innerHTML = '<span class="spin"></span>' + esc(label);
+    }
+  }
   busy(1);
-  return rawCall({ action: action, token: S.token, payload: payload || {} }).then(function (r) {
+  function done() {
     busy(-1);
+    if (label) { writing.splice(writing.indexOf(label), 1); syncPill(); }
+    if (btn) { btn.classList.remove('is-busy'); btn.innerHTML = orig; btn.disabled = false; }
+  }
+  return rawCall({ action: action, token: S.token, payload: payload || {} }).then(function (r) {
+    done();
     if (r && r.ok) return r.data;
     if (r && r.relogin) { doLogout(true); }
     throw new Error(r && r.error ? r.error : '發生錯誤');
-  }, function (e) { busy(-1); throw e; });
+  }, function (e) { done(); throw e; });
 }
+
+// 讀取類資料：先畫上次的內容，背景再更新（切頁不用等）
+S.cache = {};
+function cachedCall(key, action, payload, draw) {
+  var c = S.cache[key];
+  if (c !== undefined) draw(c, true);
+  return call(action, payload).then(function (d) { S.cache[key] = d; draw(d, false); return d; }, function (e) {
+    if (c === undefined) throw e;
+    toast('更新失敗，先顯示上次的資料');
+  });
+}
+function refreshingNote(on) { return on ? '<div class="refreshing"><span class="spin"></span>更新中…</div>' : ''; }
+
+// 庫存資料存在手機上，下次打開網頁先顯示，再背景更新
+function saveLocalState() { try { if (S.data && S.me) localStorage.setItem('hjf_state', JSON.stringify({ name: S.me.name, data: S.data })); } catch (e) {} }
+function loadLocalState() { try { var o = JSON.parse(localStorage.getItem('hjf_state') || 'null'); return o && o.data ? o.data : null; } catch (e) { return null; } }
 
 /* =========================================================
  *  小工具
@@ -290,9 +345,22 @@ function bindPicker(key, onPick) {
  *  登入流程
  * ========================================================= */
 var chosenName = '';
+function drawNames(staff) {
+  var last = lsGet('hjf_last_name');
+  if (!chosenName) chosenName = staff.indexOf(last) >= 0 ? last : '';
+  $('nameGrid').innerHTML = staff.map(function (n) {
+    return '<button class="chip' + (n === chosenName ? ' on' : '') + '" data-n="' + esc(n) + '">' + esc(n) + '</button>';
+  }).join('');
+}
 function showLogin() {
   $('appView').classList.add('hidden');
   $('loginView').classList.remove('hidden');
+  var cachedStaff = null;
+  try { cachedStaff = JSON.parse(lsGet('hjf_staff') || 'null'); } catch (e) {}
+  if (cachedStaff && cachedStaff.length) {
+    $('setupBox').classList.add('hidden'); $('loginBox').classList.remove('hidden');
+    drawNames(cachedStaff);
+  }
   call('loginInfo').then(function (info) {
     if (info.needsSetup) {
       $('setupBox').classList.remove('hidden'); $('loginBox').classList.add('hidden');
@@ -301,11 +369,9 @@ function showLogin() {
     }
     $('setupBox').classList.add('hidden'); $('loginBox').classList.remove('hidden');
     $('loginSub').textContent = '請選擇你的名字並輸入密碼';
-    var last = lsGet('hjf_last_name');
-    chosenName = info.staff.indexOf(last) >= 0 ? last : '';
-    $('nameGrid').innerHTML = info.staff.map(function (n) {
-      return '<button class="chip' + (n === chosenName ? ' on' : '') + '" data-n="' + esc(n) + '">' + esc(n) + '</button>';
-    }).join('');
+    lsSet('hjf_staff', JSON.stringify(info.staff));
+    if (info.staff.indexOf(chosenName) < 0) chosenName = '';
+    drawNames(info.staff);
   }).catch(function (e) { $('loginErr').textContent = e.message; $('loginBox').classList.remove('hidden'); });
 }
 $('nameGrid').addEventListener('click', function (e) {
@@ -324,7 +390,7 @@ function doLogin() {
     S.token = r.token; S.me = { name: r.name, role: r.role };
     lsSet('hjf_token', r.token); lsSet('hjf_last_name', r.name);
     $('loginPw').value = '';
-    enterApp();
+    if (r.state) enterWith(r.state); else enterApp();
   }).catch(function (e) { $('loginErr').textContent = e.message; })
     .then(function () { $('loginBtn').disabled = false; });
 }
@@ -336,21 +402,50 @@ $('setupBtn').onclick = function () {
 };
 $('logoutBtn').onclick = function () { doLogout(false); };
 function doLogout(expired) {
-  S.token = null; S.me = null; S.data = null; lsSet('hjf_token', null);
+  S.token = null; S.me = null; S.data = null; S.cache = {}; lsSet('hjf_token', null); lsSet('hjf_state', null);
   closeModal();
   if (expired) toast('登入已過期，請重新登入');
   showLogin();
 }
 
-function enterApp() {
-  call('state').then(function (st) {
-    S.data = st; S.me = st.me;
-    $('loginView').classList.add('hidden'); $('appView').classList.remove('hidden');
-    $('whoami').innerHTML = '<b>' + esc(S.me.name) + '</b>' + (isBoss() ? '（老闆）' : '');
-    if (isBoss() && !st.imported && !st.products.length) S.tab = 'admin';
-    render();
-  }).catch(function (e) { toast(e.message); showLogin(); });
+function enterWith(st) {
+  S.data = st; S.me = st.me; S.lastSync = Date.now();
+  saveLocalState();
+  $('loginView').classList.add('hidden'); $('appView').classList.remove('hidden');
+  $('whoami').innerHTML = '<b>' + esc(S.me.name) + '</b>' + (isBoss() ? '（老闆）' : '');
+  if (isBoss() && !st.imported && !st.products.length) S.tab = 'admin';
+  render();
+  setTimeout(prefetchMoves, 600);
 }
+function enterApp() {
+  var cached = loadLocalState();
+  if (cached) enterWith(cached);   // 先用手機上存的資料秒開
+  call('state').then(function (st) {
+    if (cached) refreshData(st); else enterWith(st);
+  }).catch(function (e) {
+    if (!S.token) return;           // 登入過期，已經回到登入畫面
+    if (cached) toast('連線不穩，先顯示上次的資料'); else { toast(e.message); showLogin(); }
+  });
+}
+// 背景拿到最新庫存：只在「庫存／效期」這種純顯示的頁面重畫，不打斷正在填的表單
+function refreshData(st) {
+  S.data = st; S.me = st.me; S.lastSync = Date.now();
+  saveLocalState();
+  if ((S.tab === 'stock' || S.tab === 'expiry') && !$('modalRoot').innerHTML) render();
+}
+// 切回這個網頁時（例如從 LINE 回來），超過 1 分鐘就背景更新庫存
+document.addEventListener('visibilitychange', function () {
+  if (document.visibilityState === 'visible' && S.token && S.data && Date.now() - (S.lastSync || 0) > 60000) {
+    S.lastSync = Date.now();
+    call('state').then(refreshData).catch(function () {});
+  }
+});
+function prefetchMoves() {
+  if (!S.token) return;
+  var key = movesKey({});
+  call('moves', { limit: 300 }).then(function (rows) { S.cache[key] = rows; }).catch(function () {});
+}
+function movesKey(f) { return 'moves:' + (f.type || '') + '|' + (f.person || '') + '|' + (f.productId || ''); }
 
 /* =========================================================
  *  分頁
@@ -370,7 +465,18 @@ $('tabs').addEventListener('click', function (e) {
   var b = e.target.closest('.tab'); if (!b) return;
   S.tab = b.dataset.t; render(); window.scrollTo(0, 0);
 });
-function applyState(st) { S.data = st; S.me = st.me; render(); }
+function applyState(st) {
+  S.data = st; S.me = st.me; S.lastSync = Date.now();
+  saveLocalState();
+  render();
+  // 有改到資料 → 紀錄、盤點紀錄的快取在背景更新
+  clearTimeout(S.mvTimer);
+  S.mvTimer = setTimeout(function () {
+    Object.keys(S.cache).forEach(function (k) { if (k.indexOf('moves:') === 0 && k !== movesKey({})) delete S.cache[k]; });
+    delete S.cache.counts;
+    prefetchMoves();
+  }, 400);
+}
 
 var VIEWS = {};
 
@@ -594,10 +700,10 @@ VIEWS.count = function () {
       }).catch(function (e) { $('cErr').textContent = e.message; });
     });
   };
-  call('counts').then(function (list) {
-    if (!$('chist')) return;
-    $('chist').innerHTML = list.length ? '<table class="t"><tr><th>時間</th><th>盤點人</th><th class="num">項數</th><th class="num">準確率</th></tr>' +
-      list.map(function (s, i) { return '<tr data-i="' + i + '" style="cursor:pointer"><td>' + esc(s.time.slice(0, 16)) + '</td><td>' + esc(s.person) + '</td><td class="num">' + s.items.length + '</td><td class="num">' + s.accuracy + '%</td></tr>'; }).join('') + '</table>' : '還沒有盤點紀錄';
+  cachedCall('counts', 'counts', {}, function (list, refreshing) {
+    if (!$('chist') || S.tab !== 'count') return;
+    $('chist').innerHTML = refreshingNote(refreshing) + (list.length ? '<table class="t"><tr><th>時間</th><th>盤點人</th><th class="num">項數</th><th class="num">準確率</th></tr>' +
+      list.map(function (s, i) { return '<tr data-i="' + i + '" style="cursor:pointer"><td>' + esc(s.time.slice(0, 16)) + '</td><td>' + esc(s.person) + '</td><td class="num">' + s.items.length + '</td><td class="num">' + s.accuracy + '%</td></tr>'; }).join('') + '</table>' : '還沒有盤點紀錄');
     var tb = $('chist').querySelector('table');
     if (tb) tb.onclick = function (e) {
       var tr = e.target.closest('tr[data-i]'); if (!tr) return; var s = list[+tr.dataset.i];
@@ -698,9 +804,9 @@ VIEWS.log = function () {
     html += '<div class="card"><div class="row"><select id="lgType" class="grow">' + types.map(function (t) { return '<option value="' + t + '"' + (f.type === t ? ' selected' : '') + '>' + (t || '全部類型') + '</option>'; }).join('') + '</select>' +
       '<select id="lgPerson" class="grow"><option value="">全部人員</option>' + S.data.staff.map(function (n) { return '<option' + (f.person === n ? ' selected' : '') + '>' + esc(n) + '</option>'; }).join('') + '</select></div>' +
       (f.productId ? '<div class="note small" style="margin-top:8px">只看：' + esc((prodById(f.productId) || {}).name || '') + '　<a href="#" id="lgClrP">看全部商品</a></div>' : '') +
-      '<div id="lgBody" class="muted small" style="margin-top:10px">載入中…</div></div>';
+      '<div id="lgBody" class="muted small" style="margin-top:10px"><span class="spin"></span>載入中…</div></div>';
   } else {
-    html += '<div class="card"><div id="lgBody" class="muted small">載入中…</div></div>';
+    html += '<div class="card"><div id="lgBody" class="muted small"><span class="spin"></span>載入中…</div></div>';
   }
   $('main').innerHTML = html;
   $('lgT').onclick = function (e) { var b = e.target.closest('.chip'); if (!b) return; S.logTab = b.dataset.v; VIEWS.log(); };
@@ -708,31 +814,32 @@ VIEWS.log = function () {
     $('lgType').onchange = function () { f.type = this.value; VIEWS.log(); };
     $('lgPerson').onchange = function () { f.person = this.value; VIEWS.log(); };
     if ($('lgClrP')) $('lgClrP').onclick = function (e) { e.preventDefault(); delete f.productId; VIEWS.log(); };
-    call('moves', { type: f.type, person: f.person, productId: f.productId, limit: 300 }).then(function (rows) {
-      if (!$('lgBody')) return;
+    var key = movesKey(f);
+    cachedCall(key, 'moves', { type: f.type, person: f.person, productId: f.productId, limit: 300 }, function (rows, refreshing) {
+      if (!$('lgBody') || S.tab !== 'log' || S.logTab !== 'moves' || movesKey(S.logFilter) !== key) return;
       $('lgBody').classList.remove('muted', 'small');
-      $('lgBody').innerHTML = rows.length ? '<div class="scroll-x"><table class="t"><tr><th>日期</th><th>類型</th><th>商品</th><th class="num">數量</th><th>用途/明細</th><th>人員</th></tr>' +
+      $('lgBody').innerHTML = refreshingNote(refreshing) + (rows.length ? '<div class="scroll-x"><table class="t"><tr><th>日期</th><th>類型</th><th>商品</th><th class="num">數量</th><th>用途/明細</th><th>人員</th></tr>' +
         rows.map(function (r, i) {
           var cls = r.type === '出貨' ? 'b-info' : r.type === '進貨' ? 'b-ok' : r.type === '效期處理' ? 'b-bad' : r.type === '盤點調整' ? 'b-warn' : 'b-mute';
           return '<tr><td class="small">' + esc(r.date) + (r.source === 'App' ? '<div class="muted">' + esc(r.time.slice(11, 16)) + '</div>' : '<div class="muted">舊表</div>') + '</td><td><span class="badge ' + cls + '">' + esc(r.type) + '</span></td><td>' + esc(r.name) + '</td><td class="num">' + esc(fmtQ(r.qty)) + '</td><td class="small">' + esc(r.reason) +
             (r.detail ? '<div class="muted">' + esc(r.detail) + '</div>' : '') + (r.note ? '<div class="muted">' + esc(r.note) + '</div>' : '') + '</td><td>' + esc(r.person) +
-            (isBoss() && r.deletable ? '<div><button class="btn sm" data-del="' + i + '" style="margin-top:4px;white-space:nowrap">刪除</button></div>' : '') + '</td></tr>';
-        }).join('') + '</table></div><div class="small muted" style="margin-top:6px">顯示最近 ' + rows.length + ' 筆' + (isBoss() ? '。新系統做的出貨／進貨可以刪除，庫存會自動還原。' : '') + '</div>' : '<div class="muted">沒有紀錄</div>';
+            (isBoss() && r.deletable && !refreshing ? '<div><button class="btn sm" data-del="' + i + '" style="margin-top:4px;white-space:nowrap">刪除</button></div>' : '') + '</td></tr>';
+        }).join('') + '</table></div><div class="small muted" style="margin-top:6px">顯示最近 ' + rows.length + ' 筆' + (isBoss() ? '。新系統做的出貨／進貨可以刪除，庫存會自動還原。' : '') + '</div>' : '<div class="muted">沒有紀錄</div>');
       Array.prototype.forEach.call(document.querySelectorAll('[data-del]'), function (b) {
-        b.onclick = function () { deleteMoveDialog(rows[+b.dataset.del]); };
+        b.onclick = function () { deleteMoveDialog(rows[+b.dataset.del], b); };
       });
     }).catch(function (e) { if ($('lgBody')) $('lgBody').textContent = e.message; });
   } else {
-    call('logins', { limit: 300 }).then(function (rows) {
-      if (!$('lgBody')) return;
+    cachedCall('logins', 'logins', { limit: 300 }, function (rows, refreshing) {
+      if (!$('lgBody') || S.tab !== 'log' || S.logTab !== 'logins') return;
       $('lgBody').classList.remove('muted', 'small');
-      $('lgBody').innerHTML = rows.length ? '<table class="t"><tr><th>時間</th><th>姓名</th><th>身分</th><th>結果</th></tr>' +
-        rows.map(function (r) { return '<tr><td class="small">' + esc(r.time) + '</td><td>' + esc(r.name) + '</td><td>' + esc(r.role) + '</td><td>' + (r.result === '成功' ? '<span class="badge b-ok">成功</span>' : '<span class="badge b-bad">' + esc(r.result) + '</span>') + '</td></tr>'; }).join('') + '</table>' : '<div class="muted">沒有紀錄</div>';
+      $('lgBody').innerHTML = refreshingNote(refreshing) + (rows.length ? '<table class="t"><tr><th>時間</th><th>姓名</th><th>身分</th><th>結果</th></tr>' +
+        rows.map(function (r) { return '<tr><td class="small">' + esc(r.time) + '</td><td>' + esc(r.name) + '</td><td>' + esc(r.role) + '</td><td>' + (r.result === '成功' ? '<span class="badge b-ok">成功</span>' : '<span class="badge b-bad">' + esc(r.result) + '</span>') + '</td></tr>'; }).join('') + '</table>' : '<div class="muted">沒有紀錄</div>');
     }).catch(function (e) { if ($('lgBody')) $('lgBody').textContent = e.message; });
   }
 };
 
-function deleteMoveDialog(r) {
+function deleteMoveDialog(r, btnEl) {
   var effect = r.type === '出貨'
     ? '庫存會<b>加回 ' + esc(fmtQ(r.qty)) + '</b>（回到原本的批次：' + esc(r.detail) + '）'
     : '庫存會<b>扣掉 ' + esc(fmtQ(r.qty)) + '</b>（這批：' + esc(r.detail) + '）';
@@ -742,9 +849,20 @@ function deleteMoveDialog(r) {
     '<div>' + effect + '。</div><div class="small muted" style="margin-top:6px">被刪的紀錄會保留在試算表「已刪除紀錄」分頁，可以查得到。</div>',
     '刪除', true).then(function (ok) {
     if (!ok) return;
+    var tr = btnEl && btnEl.closest('tr');
+    if (tr) { tr.classList.add('deleting'); btnEl.disabled = true; btnEl.innerHTML = '<span class="spin"></span>刪除中…'; }
     call('deleteMove', { row: r.row, time: r.time, productId: r.productId, type: r.type })
-      .then(function (st) { toast('已刪除，庫存已還原'); applyState(st); })
-      .catch(function (e) { toast(e.message); VIEWS.log(); });
+      .then(function (st) {
+        // 快取裡先拿掉這筆，後面的列號往前移一格，畫面馬上更新
+        Object.keys(S.cache).forEach(function (k) {
+          if (k.indexOf('moves:') !== 0) return;
+          S.cache[k] = S.cache[k].filter(function (x) { return x.row !== r.row; })
+            .map(function (x) { if (x.row > r.row) { x = Object.assign({}, x); x.row--; } return x; });
+        });
+        toast('已刪除，庫存已還原');
+        applyState(st);
+      })
+      .catch(function (e) { toast(e.message); delete S.cache[movesKey(S.logFilter || {})]; VIEWS.log(); });
   });
 }
 
@@ -797,8 +915,8 @@ VIEWS.admin = function () {
   };
   $('ndGo').onclick = function () { call('setSettings', { nearDays: $('nd').value }).then(function (st2) { toast('已儲存'); applyState(st2); }).catch(function (e) { toast(e.message); }); };
 
-  call('getAdminInfo').then(function (info) {
-    if (!$('bkBox')) return;
+  cachedCall('admin', 'getAdminInfo', {}, function (info) {
+    if (!$('bkBox') || S.tab !== 'admin') return;
     drawStaff(info.staffAll);
     $('bkBox').classList.remove('muted', 'small');
     $('bkBox').innerHTML = '<div><a href="' + esc(info.sheetUrl) + '" target="_blank">打開資料試算表「好肌府庫存系統資料」↗</a></div>' +
@@ -806,7 +924,12 @@ VIEWS.admin = function () {
       '<table class="t" style="margin-top:8px"><tr><td>每晚自動備份</td><td>' + (info.backupOn ? '<span class="badge b-ok">已開啟（每晚 23:00）</span>' : '<span class="badge b-warn">未開啟</span>') + '</td></tr>' +
       '<tr><td>上次備份</td><td>' + esc(info.lastBackup || '還沒有') + '</td></tr><tr><td>上次匯入舊表</td><td>' + esc(info.importedAt || '還沒有') + '</td></tr></table>' +
       '<div class="small muted" style="margin-top:6px">備份存在雲端硬碟「好肌府庫存備份」資料夾，保留最近 30 份。</div>' +
-      '<button class="btn" id="bkGo" style="margin-top:8px">' + (info.backupOn ? '立即備份一次' : '開啟每晚備份並立即備份') + '</button>';
+      '<button class="btn" id="bkGo" style="margin-top:8px">' + (info.backupOn ? '立即備份一次' : '開啟每晚備份並立即備份') + '</button>' +
+      '<div class="small muted" style="margin-top:12px">如果你直接在試算表改過數字，按下面這顆，網頁才會馬上讀到（不按的話最晚 1 小時會自動更新）。</div>' +
+      '<button class="btn" id="rlGo" style="margin-top:6px">重新讀取試算表</button>';
+    $('rlGo').onclick = function () {
+      call('reloadData').then(function (st) { toast('已重新讀取試算表'); applyState(st); }).catch(function (e) { toast(e.message); });
+    };
     $('bkGo').onclick = function () {
       this.disabled = true;
       call('backupNow').then(function (r) { toast('備份完成：' + r.name); VIEWS.admin(); }).catch(function (e) { toast(e.message); VIEWS.admin(); });
@@ -821,7 +944,7 @@ function drawStaff(list) {
     return '<tr><td>' + esc(s.name) + '</td><td><label class="row small" style="gap:6px"><input type="checkbox" data-i="' + i + '" ' + (s.active ? 'checked' : '') + ' style="width:auto;min-height:0">啟用</label></td></tr>';
   }).join('') + '</table><div class="row" style="margin-top:8px"><input type="text" id="newStaff" placeholder="新增人員名字" class="grow"><button class="btn" id="addStaff">新增</button></div><div class="err" id="stErr"></div>';
   function save(nl) {
-    call('setStaff', { staff: nl }).then(function (info) { toast('名單已更新'); drawStaff(info.staffAll); call('state').then(applyState); })
+    call('setStaff', { staff: nl }).then(function (info) { S.cache.admin = info; lsSet('hjf_staff', null); toast('名單已更新'); drawStaff(info.staffAll); call('state').then(refreshData); })
       .catch(function (e) { $('stErr').textContent = e.message; });
   }
   box.querySelector('table').onchange = function (e) {
