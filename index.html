@@ -107,6 +107,16 @@
   .sync{position:fixed;top:10px;left:50%;transform:translateX(-50%);background:#2f2a26;color:#fff;padding:7px 14px;border-radius:999px;z-index:80;font-size:14px;box-shadow:0 4px 14px rgba(0,0,0,.2)}
   .refreshing{font-size:12px;color:var(--muted);margin:4px 0}
   tr.deleting{opacity:.4}
+  /* uniform */
+  .ugrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px;margin:10px 0}
+  .ucard{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 8px;text-align:center}
+  .ucard.tap{cursor:pointer}
+  .ucard .nm{font-weight:700;font-size:15px;overflow-wrap:anywhere}
+  .ucard .n{font-size:26px;font-weight:700;line-height:1.2;color:var(--ok)}
+  .ucard .n.zero{color:var(--bad)}
+  .ucard .l{font-size:11px;color:var(--muted)}
+  .ucard .meta{font-size:12px;color:var(--muted);margin-top:2px}
+  details.more summary{cursor:pointer;color:var(--muted);font-size:14px;padding:6px 0}
   /* login */
   .login{max-width:380px;margin:8vh auto;padding:0 16px}
   .login .logo{text-align:center;font-size:22px;font-weight:700;margin-bottom:4px}
@@ -196,7 +206,9 @@ var WRITE_LABEL = {
   login: '登入中…', setup: '設定中…', ship: '出貨中…', receive: '進貨中…', count: '送出盤點中…',
   expiryAction: '處理中…', setLotExpiry: '儲存中…', addProduct: '儲存中…', updateProduct: '儲存中…',
   setProductActive: '儲存中…', deleteMove: '刪除中…', setStaff: '儲存中…', changePasswords: '更新中…',
-  setSettings: '儲存中…', importOld: '匯入中…（約 10～30 秒）', backupNow: '備份中…', reloadData: '重新讀取中…'
+  setSettings: '儲存中…', importOld: '匯入中…（約 10～30 秒）', backupNow: '備份中…', reloadData: '重新讀取中…',
+  uniLend: '登記中…', uniReturn: '歸還中…', uniDelete: '刪除中…', uniSetItem: '儲存中…', uniRemoveItem: '移除中…',
+  importUniform: '匯入中…'
 };
 var lastBtn = null, lastBtnAt = 0, writing = [];
 document.addEventListener('click', function (e) {
@@ -451,7 +463,7 @@ function movesKey(f) { return 'moves:' + (f.type || '') + '|' + (f.person || '')
  *  分頁
  * ========================================================= */
 var TABS = [
-  ['stock', '庫存'], ['ship', '出貨'], ['receive', '進貨'], ['count', '盤點'], ['expiry', '效期'], ['log', '紀錄'], ['admin', '管理']
+  ['stock', '庫存'], ['ship', '出貨'], ['receive', '進貨'], ['count', '盤點'], ['expiry', '效期'], ['uniform', '制服'], ['log', '紀錄'], ['admin', '管理']
 ];
 function render() {
   var tabs = TABS.filter(function (t) { return t[0] !== 'admin' || isBoss(); });
@@ -866,6 +878,133 @@ function deleteMoveDialog(r, btnEl) {
   });
 }
 
+/* ---------- 制服／名牌（員工只能看；領用、歸還、改總數由老闆操作） ---------- */
+VIEWS.uniform = function () {
+  var kind = S.uniKind || '制服';
+  $('main').innerHTML = '<div class="chips" id="uKind" style="margin-top:12px">' + ['制服', '名牌'].map(function (k) {
+    return '<button class="chip' + (k === kind ? ' on' : '') + '" data-v="' + k + '">' + k + '</button>'; }).join('') + '</div><div id="uBody"><div class="muted" style="padding:16px 0"><span class="spin"></span>載入中…</div></div>';
+  $('uKind').onclick = function (e) { var b = e.target.closest('.chip'); if (!b) return; S.uniKind = b.dataset.v; VIEWS.uniform(); };
+  cachedCall('uniform', 'uniform', {}, function (u, refreshing) { if (S.tab === 'uniform' && $('uBody')) drawUniform(u, refreshing); })
+    .catch(function (e) { if ($('uBody')) $('uBody').textContent = e.message; });
+};
+function uniApply(u) { S.cache.uniform = u; if (S.tab === 'uniform' && $('uBody')) drawUniform(u, false); }
+function uniUnit(kind) { return kind === '制服' ? '件' : '個'; }
+function drawUniform(u, refreshing) {
+  var kind = S.uniKind || '制服', boss = isBoss(), unit = uniUnit(kind);
+  var items = u.items.filter(function (i) { return i.kind === kind; });
+  var recs = u.recs.filter(function (r) { return r.kind === kind; });
+  var held = recs.filter(function (r) { return r.status === '持有中'; });
+  var back = recs.filter(function (r) { return r.status === '已歸還'; });
+  var tot = items.reduce(function (s, i) { return s + i.total; }, 0), h = items.reduce(function (s, i) { return s + i.held; }, 0);
+  var html = refreshingNote(refreshing);
+  if (!items.length && !recs.length) {
+    html += '<div class="card">' + (boss ? (u.importedAt ? '還沒有' + kind + '品項，按下面「新增」建立。' : '還沒有資料。請到「管理 → 從舊制服表匯入」把舊的制服管理表搬進來。') : '老闆還沒有建立' + kind + '資料。') + '</div>';
+  }
+  html += '<div class="tiles"><div class="tile"><div class="n">' + tot + '</div><div class="l">' + kind + '總數</div></div>' +
+    '<div class="tile warn"><div class="n">' + h + '</div><div class="l">員工持有</div></div>' +
+    '<div class="tile"><div class="n" style="color:var(--ok)">' + (tot - h) + '</div><div class="l">可用</div></div></div>';
+  html += '<div class="ugrid" id="uGrid">' + items.map(function (i, k) {
+    return '<div class="ucard' + (boss ? ' tap' : '') + '" data-k="' + k + '"><div class="nm">' + esc(i.name) + '</div><div class="n' + (i.avail <= 0 ? ' zero' : '') + '">' + i.avail + '</div><div class="l">可用</div>' +
+      '<div class="meta">總數 ' + i.total + '・已領 ' + i.held + '</div></div>';
+  }).join('') + '</div>';
+  if (boss) html += '<div class="row"><button class="btn primary grow" id="uLend">＋ 登記領用</button><button class="btn" id="uNew">＋ 新增' + (kind === '制服' ? '尺寸' : '名牌種類') + '</button></div>' +
+    '<div class="small muted" style="margin-top:6px">點上面的卡片可以改總數。</div>';
+  else html += '<div class="note small">領用、歸還要請老闆登記。</div>';
+  html += '<div class="card"><h2>持有中（' + held.length + ' 筆）</h2>' + (held.length ? '<div class="scroll-x"><table class="t"><tr><th>員工</th><th>' + (kind === '制服' ? '尺寸' : '名牌') + '</th><th class="num">數量</th><th>領用日</th>' + (boss ? '<th></th>' : '') + '</tr>' +
+    held.map(function (r) {
+      return '<tr><td>' + esc(r.person) + '</td><td><span class="badge b-info">' + esc(r.item) + '</span></td><td class="num">' + r.qty + '</td><td class="small">' + esc(r.date || '—') + '</td>' +
+        (boss ? '<td class="num"><button class="btn sm" data-ret="' + r.id + '">歸還</button></td>' : '') + '</tr>';
+    }).join('') + '</table></div>' : '<div class="muted">目前沒有人持有</div>') + '</div>';
+  html += '<details class="more"' + (S.uniShowBack ? ' open' : '') + ' id="uBackD"><summary>歸還紀錄（' + back.length + ' 筆）</summary>' + (back.length ? '<div class="scroll-x"><table class="t"><tr><th>員工</th><th>' + (kind === '制服' ? '尺寸' : '名牌') + '</th><th class="num">數量</th><th>領用日</th><th>歸還日</th>' + (boss ? '<th></th>' : '') + '</tr>' +
+    back.map(function (r) {
+      return '<tr><td>' + esc(r.person) + '</td><td><span class="badge b-mute">' + esc(r.item) + '</span></td><td class="num">' + r.qty + '</td><td class="small">' + esc(r.date || '—') + '</td><td class="small">' + esc(r.returnDate || '—') + '</td>' +
+        (boss ? '<td class="num"><button class="btn sm" data-del="' + r.id + '">刪除</button></td>' : '') + '</tr>';
+    }).join('') + '</table></div>' : '<div class="muted small">還沒有歸還紀錄</div>') + '</details>';
+  $('uBody').innerHTML = html;
+  $('uBackD').ontoggle = function () { S.uniShowBack = this.open; };
+  if (!boss) return;
+  $('uLend').onclick = function () { uniLendDialog(u, kind); };
+  $('uNew').onclick = function () { uniItemDialog(kind, null); };
+  $('uGrid').onclick = function (e) { var c = e.target.closest('.ucard'); if (c) uniItemDialog(kind, items[+c.dataset.k]); };
+  Array.prototype.forEach.call(document.querySelectorAll('[data-ret]'), function (b) {
+    b.onclick = function () { uniReturnDialog(recs.filter(function (r) { return r.id === +b.dataset.ret; })[0]); };
+  });
+  Array.prototype.forEach.call(document.querySelectorAll('[data-del]'), function (b) {
+    b.onclick = function () { uniDeleteDialog(recs.filter(function (r) { return r.id === +b.dataset.del; })[0]); };
+  });
+}
+function uniLendDialog(u, kind) {
+  var items = u.items.filter(function (i) { return i.kind === kind; });
+  if (!items.length) { toast('請先新增' + (kind === '制服' ? '尺寸' : '名牌種類')); return; }
+  var unit = uniUnit(kind), pick = null;
+  openModal('<h2>登記' + kind + '領用</h2>' +
+    '<label class="f">員工</label><input type="text" id="ulName" list="ulPeople" placeholder="選或直接打名字" autocomplete="off"><datalist id="ulPeople">' +
+    u.people.map(function (n) { return '<option value="' + esc(n) + '">'; }).join('') + '</datalist>' +
+    '<label class="f">' + (kind === '制服' ? '尺寸' : '名牌') + '</label><div class="chips" id="ulItem">' + items.map(function (i, k) {
+      return '<button class="chip" data-k="' + k + '"' + (i.avail <= 0 ? ' disabled style="opacity:.4"' : '') + '>' + esc(i.name) + '（剩 ' + i.avail + '）</button>'; }).join('') + '</div>' +
+    '<div class="row"><div class="grow"><label class="f">數量</label><input type="number" id="ulQty" value="1" min="1" step="1"></div>' +
+    '<div class="grow"><label class="f">領用日</label><input type="date" id="ulDate" value="' + esc(u.today) + '"></div></div>' +
+    '<label class="f">備註（選填）</label><input type="text" id="ulNote">' +
+    '<div class="err" id="ulErr"></div><div class="acts"><button class="btn" onclick="closeModal()">取消</button><button class="btn primary" id="ulGo">登記</button></div>',
+    function () {
+      $('ulItem').onclick = function (e) { var b = e.target.closest('.chip'); if (!b || b.disabled) return; pick = items[+b.dataset.k];
+        Array.prototype.forEach.call(this.children, function (c) { c.classList.toggle('on', c === b); }); };
+      $('ulGo').onclick = function () {
+        $('ulErr').textContent = '';
+        var name = $('ulName').value.trim(), q = Number($('ulQty').value);
+        if (!name) { $('ulErr').textContent = '請填員工名字'; return; }
+        if (!pick) { $('ulErr').textContent = '請選' + (kind === '制服' ? '尺寸' : '名牌'); return; }
+        if (q > pick.avail) { $('ulErr').textContent = '「' + pick.name + '」可用只剩 ' + pick.avail + ' ' + unit; return; }
+        call('uniLend', { kind: kind, item: pick.name, person: name, qty: q, date: $('ulDate').value, note: $('ulNote').value })
+          .then(function (nu) { closeModal(); toast('已登記：' + name + ' 領 ' + pick.name + ' × ' + q); uniApply(nu); })
+          .catch(function (e) { $('ulErr').textContent = e.message; });
+      };
+    });
+}
+function uniReturnDialog(r) {
+  if (!r) return;
+  openModal('<h2>登記歸還</h2><div><b>' + esc(r.person) + '</b> 歸還 ' + esc(r.kind) + ' <b>' + esc(r.item) + '</b> × ' + r.qty + '</div>' +
+    '<div class="small muted">領用日 ' + esc(r.date || '未記錄') + '。歸還後會回到可用庫存，紀錄保留在「歸還紀錄」。</div>' +
+    '<label class="f">歸還日</label><input type="date" id="urDate" value="' + esc((S.cache.uniform || {}).today || '') + '">' +
+    '<div class="err" id="urErr"></div><div class="acts"><button class="btn" onclick="closeModal()">取消</button><button class="btn primary" id="urGo">確定歸還</button></div>',
+    function () {
+      $('urGo').onclick = function () {
+        call('uniReturn', { id: r.id, date: $('urDate').value }).then(function (nu) { closeModal(); toast('已歸還：' + r.person + ' ' + r.item + ' × ' + r.qty); uniApply(nu); })
+          .catch(function (e) { $('urErr').textContent = e.message; });
+      };
+    });
+}
+function uniDeleteDialog(r) {
+  if (!r) return;
+  confirmBox('刪除紀錄', '確定刪除「' + esc(r.person) + '：' + esc(r.item) + ' × ' + r.qty + '」這筆歸還紀錄？（會留一份在試算表「已刪除紀錄」分頁）', '刪除', true).then(function (ok) {
+    if (!ok) return;
+    call('uniDelete', { id: r.id }).then(function (nu) { toast('已刪除'); uniApply(nu); }).catch(function (e) { toast(e.message); });
+  });
+}
+function uniItemDialog(kind, it) {
+  var label = kind === '制服' ? '尺寸' : '名牌名稱';
+  openModal('<h2>' + (it ? kind + '「' + esc(it.name) + '」' : '新增' + (kind === '制服' ? '尺寸' : '名牌種類')) + '</h2>' +
+    (it ? '<div class="small muted">目前員工持有 ' + it.held + ' ' + uniUnit(kind) + '，總數不能比這個少。</div>' :
+      '<label class="f">' + label + '</label><input type="text" id="uiName" placeholder="' + (kind === '制服' ? '例：2XL' : '例：新同事名字') + '">') +
+    '<label class="f">總數（含員工手上的）</label><input type="number" id="uiTotal" min="0" step="1" value="' + (it ? it.total : '') + '">' +
+    '<div class="err" id="uiErr"></div><div class="acts">' +
+    (it && it.held === 0 ? '<button class="btn danger" id="uiDel">移除這個' + (kind === '制服' ? '尺寸' : '名牌') + '</button>' : '') +
+    '<button class="btn" onclick="closeModal()">取消</button><button class="btn primary" id="uiGo">儲存</button></div>',
+    function () {
+      $('uiGo').onclick = function () {
+        var name = it ? it.name : $('uiName').value.trim();
+        call('uniSetItem', { kind: kind, item: name, total: $('uiTotal').value, isNew: !it }).then(function (nu) { closeModal(); toast('已儲存：' + name); uniApply(nu); })
+          .catch(function (e) { $('uiErr').textContent = e.message; });
+      };
+      if ($('uiDel')) $('uiDel').onclick = function () {
+        confirmBox('移除品項', '確定移除「' + esc(it.name) + '」？（歸還紀錄會保留）', '移除', true).then(function (ok) {
+          if (!ok) return uniItemDialog(kind, it);
+          call('uniRemoveItem', { kind: kind, item: it.name }).then(function (nu) { toast('已移除'); uniApply(nu); }).catch(function (e) { toast(e.message); });
+        });
+      };
+    });
+}
+
 /* ---------- 管理（老闆） ---------- */
 VIEWS.admin = function () {
   if (!isBoss()) { S.tab = 'stock'; return render(); }
@@ -875,6 +1014,8 @@ VIEWS.admin = function () {
     (st.imported ? '<div class="warnbox" style="margin-top:8px">已經匯入過。重新匯入會<b>清掉新系統所有庫存與紀錄</b>，改用舊表當下的資料（登入紀錄保留）。</div>' +
       '<label class="row small" style="margin-top:8px;gap:6px"><input type="checkbox" id="imOver" style="width:auto;min-height:0"> 我確定要覆蓋</label>' : '') +
     '<div class="err" id="imErr"></div><button class="btn primary" id="imGo">' + (st.imported ? '重新匯入' : '從舊表匯入') + '</button><div id="imRep"></div></div>';
+  html += '<div class="card"><h2>從舊制服表匯入</h2><div class="small muted">從 Google 試算表「好肌府制服管理資料」讀取制服、名牌的總數與領用紀錄（名字大小寫會統一，例：KIKI→Kiki）。</div>' +
+    '<div id="uimBox"></div><div class="err" id="uimErr"></div><button class="btn primary" id="uimGo">從舊制服表匯入</button></div>';
   html += '<div class="card"><h2>商品管理</h2><div class="row"><button class="btn primary" id="addP">＋ 新增商品</button></div>' +
     '<div class="small muted" style="margin-top:8px">點商品可以修改名稱、安全庫存等；「刪除」會停用商品，歷史紀錄保留，之後可以重新啟用。</div><div id="pAdmin" style="margin-top:8px"></div></div>';
   html += '<div class="card"><h2>人員名單</h2><div id="staffBox" class="muted small">載入中…</div></div>';
@@ -904,6 +1045,27 @@ VIEWS.admin = function () {
         openModal('<h2>匯入完成</h2><ul>' + rep.map(function (r) { return '<li>' + esc(r) + '</li>'; }).join('') + '</ul>' +
           '<div class="note small">已自動開啟「每晚 23:00 備份」。建議到「效期 → 效期未登記」看看哪些商品需要補效期。</div><div class="acts"><button class="btn primary" onclick="closeModal()">好</button></div>');
       }).catch(function (e) { $('imErr').textContent = e.message; $('imGo').disabled = false; $('imGo').textContent = '重試匯入'; });
+    });
+  };
+  function drawUimBox() {
+    var u = S.cache.uniform; if (!$('uimBox') || !u) return;
+    $('uimGo').textContent = u.importedAt ? '重新匯入' : '從舊制服表匯入';
+    $('uimBox').innerHTML = u.importedAt ? '<div class="warnbox" style="margin-top:8px">已經在 ' + esc(u.importedAt) + ' 匯入過。重新匯入會<b>清掉新系統所有制服、名牌資料</b>，改用舊表當下的內容。</div>' +
+      '<label class="row small" style="margin-top:8px;gap:6px"><input type="checkbox" id="uimOver" style="width:auto;min-height:0"> 我確定要覆蓋</label>' : '';
+  }
+  if (S.cache.uniform) drawUimBox(); else call('uniform').then(function (u) { S.cache.uniform = u; drawUimBox(); }).catch(function () {});
+  $('uimGo').onclick = function () {
+    $('uimErr').textContent = '';
+    var u = S.cache.uniform || {}, over = $('uimOver') ? $('uimOver').checked : false;
+    if (u.importedAt && !over) { $('uimErr').textContent = '要重新匯入請先勾選「我確定要覆蓋」'; return; }
+    confirmBox('從舊制服表匯入', u.importedAt ? '新系統目前的制服、名牌資料會被舊表內容取代，確定嗎？' : '會讀取舊制服管理表最新的資料，大約 5～10 秒。', '開始匯入', !!u.importedAt).then(function (ok) {
+      if (!ok) return;
+      call('importUniform', { overwrite: over }).then(function (nu) {
+        var rep = nu.importReport || []; delete nu.importReport; S.cache.uniform = nu; drawUimBox();
+        openModal('<h2>制服匯入完成</h2><ul>' + rep.map(function (r) { return '<li>' + esc(r) + '</li>'; }).join('') + '</ul>' +
+          '<div class="note small">請到「制服」分頁對一下數字。確認沒問題後，舊的制服管理表就可以改成唯讀。</div><div class="acts"><button class="btn" onclick="closeModal()">關閉</button><button class="btn primary" id="uimSee">去看制服</button></div>',
+          function () { $('uimSee').onclick = function () { closeModal(); S.tab = 'uniform'; render(); }; });
+      }).catch(function (e) { $('uimErr').textContent = e.message; });
     });
   };
   $('pwGo').onclick = function () {
